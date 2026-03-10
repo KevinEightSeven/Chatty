@@ -1,0 +1,62 @@
+{
+  "name": "chatty",
+  "version": "1.0.0",
+  "description": "Twitch Chat Client — inspired by Chatterino",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron . --ozone-platform-hint=auto",
+    "dev": "electron . --dev --ozone-platform-hint=auto",
+    "dist": "electron-builder --win --mac --linux",
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac",
+    "dist:linux": "electron-builder --linux"
+  },
+  "keywords": [
+    "twitch",
+    "chat",
+    "gaming",
+    "electron"
+  ],
+  "author": "sempd",
+  "license": "MIT",
+  "type": "commonjs",
+  "build": {
+    "appId": "com.sempd.chatty",
+    "productName": "Chatty",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "artifactName": "Chatty-Setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": null,
+      "uninstallerIcon": null
+    },
+    "mac": {
+      "target": "dmg",
+      "artifactName": "Chatty.${ext}",
+      "category": "public.app-category.social-networking"
+    },
+    "linux": {
+      "target": "AppImage",
+      "artifactName": "Chatty.${ext}",
+      "category": "Chat"
+    }
+  },
+  "devDependencies": {
+    "electron": "^40.8.0",
+    "electron-builder": "^26.8.1"
+  },
+  "dependencies": {
+    "electron-store": "^11.0.2",
+    "ws": "^8.18.0"
+  }
+}
