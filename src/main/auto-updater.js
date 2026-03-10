@@ -1,7 +1,7 @@
 const { net } = require('electron');
 const { version } = require('../../package.json');
 
-const GITHUB_OWNER = 'sempd';
+const GITHUB_OWNER = 'KevinEightSeven';
 const GITHUB_REPO = 'Chatty';
 const RELEASES_URL = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`;
 
