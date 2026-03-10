@@ -10,6 +10,20 @@ Chatty is a lightweight, multi-pane Twitch chat client built with Electron. Conn
 
 ---
 
+## Screenshots
+
+### Multi-Pane Split Chat
+View multiple Twitch channels side-by-side with full emote and badge rendering, live stream info, and an inline user list — all in one window.
+
+![Split Chat](screenshots/split-chat.png)
+
+### Channel Search
+Quickly find and join any Twitch channel by name, browse top live streams, or explore categories.
+
+![Add Chat](screenshots/add-chat.png)
+
+---
+
 ## Features
 
 ### Multi-Pane Chat
@@ -77,7 +91,7 @@ Chatty is a lightweight, multi-pane Twitch chat client built with Electron. Conn
 
 ## Installation
 
-Download the latest release for your platform from the [Releases](https://github.com/sempd/Chatty/releases) page:
+Download the latest release for your platform from the [Releases](https://github.com/KevinEightSeven/Chatty/releases) page:
 
 | Platform | Download |
 |----------|----------|
@@ -101,7 +115,7 @@ chmod +x Chatty-*.AppImage
 
 ### Setup
 ```bash
-git clone https://github.com/sempd/Chatty.git
+git clone https://github.com/KevinEightSeven/Chatty.git
 cd Chatty
 npm install
 ```
