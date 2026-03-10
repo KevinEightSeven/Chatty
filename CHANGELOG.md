@@ -2,7 +2,7 @@
 
 ## Current State (2026-03-10)
 
-The app is **feature-complete and pushed to GitHub** at `sempd/Chatty`.
+The app is **feature-complete and pushed to GitHub** at `KevinEightSeven/Chatty`.
 
 ---
 
@@ -115,7 +115,7 @@ electron-builder is configured in package.json `"build"` section:
 
 ## GitHub Details
 
-- **Repo**: `sempd/Chatty` (public)
+- **Repo**: `KevinEightSeven/Chatty` (public)
 - **GitHub username**: sempd (git config: KevinEightSeven / 87kevo@gmail.com)
 - **gh CLI installed at**: `/home/kevin/.local/bin/gh`
 - **Release**: v1.0.0 with only 3 artifacts: `.exe`, `.dmg`, `.AppImage`
