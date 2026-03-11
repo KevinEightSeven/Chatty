@@ -143,13 +143,34 @@ async function checkAppUpdate() {
     banner.id = 'update-banner';
     banner.innerHTML = `
       <span>Chatty v${result.latestVersion} is available (you have v${result.currentVersion})</span>
-      <button id="update-download">Download</button>
+      <button id="update-install">Update Now</button>
       <button id="update-dismiss">&times;</button>
     `;
     document.body.appendChild(banner);
 
-    document.getElementById('update-download').addEventListener('click', () => {
-      window.chatty.openExternal(result.releaseUrl);
+    document.getElementById('update-install').addEventListener('click', async () => {
+      const btn = document.getElementById('update-install');
+      btn.disabled = true;
+      btn.textContent = 'Downloading...';
+
+      const unsub = window.chatty.onUpdateProgress((progress) => {
+        btn.textContent = `Downloading ${progress.percent}%`;
+      });
+
+      try {
+        const res = await window.chatty.downloadUpdate();
+        if (res.error) {
+          btn.textContent = 'Failed';
+          btn.disabled = false;
+          setTimeout(() => { btn.textContent = 'Update Now'; }, 3000);
+          unsub();
+        }
+        // If successful, app will quit and relaunch
+      } catch {
+        btn.textContent = 'Update Now';
+        btn.disabled = false;
+        unsub();
+      }
     });
     document.getElementById('update-dismiss').addEventListener('click', () => {
       banner.remove();

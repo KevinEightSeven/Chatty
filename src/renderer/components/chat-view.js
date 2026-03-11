@@ -84,6 +84,27 @@ class ChatView {
     if (status.loggedIn && status.user) {
       this.myUserId = status.user.userId;
       this.myUsername = (status.user.login || status.user.displayName || '').toLowerCase();
+
+      // Check if we are the broadcaster
+      if (this.myUsername === this.channel) {
+        this.isModerator = true;
+        return;
+      }
+
+      // Check if we are a moderator in this channel via API
+      if (this.broadcasterId) {
+        try {
+          const mods = await window.chatty.getModerators(this.broadcasterId, 100);
+          if (mods.items) {
+            for (const mod of mods.items) {
+              if (mod.user_id === this.myUserId) {
+                this.isModerator = true;
+                return;
+              }
+            }
+          }
+        } catch { /* ignore */ }
+      }
     }
   }
 
@@ -225,8 +246,42 @@ class ChatView {
   }
 
   _renderUsernotice(tags, message) {
+    const msgId = tags['msg-id'] || '';
     const systemMsg = tags['system-msg'] || '';
     const div = document.createElement('div');
+
+    // Announcements get special colored rendering
+    if (msgId === 'announcement') {
+      const announceColor = tags['msg-param-color'] || 'primary';
+      const colorMap = {
+        primary: '#9147ff',
+        blue: '#3b82f6',
+        green: '#22c55e',
+        orange: '#f97316',
+        purple: '#a855f7',
+      };
+      const accentColor = colorMap[announceColor] || colorMap.primary;
+      div.className = 'chat-message chat-announcement';
+      div.style.borderLeft = `3px solid ${accentColor}`;
+      div.style.background = `${accentColor}15`;
+
+      const displayName = tags['display-name'] || tags.login || '';
+      const color = tags.color || this._nameColor(displayName);
+      const badgesHtml = this._emotesReady
+        ? emoteBadgeManager.renderBadges(tags.badges || '', this.broadcasterId)
+        : this._renderBadges(tags.badges || '');
+      const msgHtml = this._emotesReady
+        ? emoteBadgeManager.renderMessage(message || '', tags.emotes || '', this.broadcasterId)
+        : this._renderMessageWithMentions(message || '');
+
+      let html = `${this._renderTimestamp()}${badgesHtml}<span class="chat-author" style="color:${color}">${this._escapeHtml(displayName)}</span>: <span class="chat-text">${msgHtml}</span>`;
+      div.innerHTML = html;
+      this.element.appendChild(div);
+      this._trimMessages();
+      if (this.autoScroll) this._scrollToBottom();
+      return;
+    }
+
     div.className = 'chat-message chat-usernotice';
 
     let html = `${this._renderTimestamp()}<span class="chat-text" style="color:var(--accent-bright);">${this._escapeHtml(systemMsg)}</span>`;

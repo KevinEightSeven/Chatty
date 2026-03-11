@@ -94,6 +94,12 @@ class SplitManager {
 
     row.appendChild(panel);
 
+    // Click on live info title to expand/collapse long titles
+    panel.querySelector('.live-info-title').addEventListener('click', () => {
+      const liveInfo = panel.querySelector('.split-live-info');
+      if (liveInfo) liveInfo.classList.toggle('expanded');
+    });
+
     const splitData = {
       id: splitId,
       tabId,
@@ -337,8 +343,11 @@ class SplitManager {
     // @mention autocomplete
     this._setupMentionAutocomplete(inputEl, split);
 
+    // /command autocomplete
+    this._setupCommandAutocomplete(inputEl, split);
+
     const sendMessage = async () => {
-      if (split._mentionOpen) return; // Let autocomplete handle Enter
+      if (split._mentionOpen || split._cmdOpen) return; // Let autocomplete handle Enter
       const msg = inputEl.value.trim();
       if (!msg) return;
       sendBtn.disabled = true;
@@ -364,7 +373,7 @@ class SplitManager {
 
     sendBtn.addEventListener('click', sendMessage);
     inputEl.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !split._mentionOpen) sendMessage();
+      if (e.key === 'Enter' && !split._mentionOpen && !split._cmdOpen) sendMessage();
     });
 
     this._updateStreamDetails(split);
@@ -431,7 +440,55 @@ class SplitManager {
         return;
       }
       await fetchDetails();
+      this._checkActivePoll(split);
     }, 15000);
+
+    // Initial poll check
+    this._checkActivePoll(split);
+  }
+
+  async _checkActivePoll(split) {
+    if (!split.broadcasterId || !split.chatView) return;
+    try {
+      const polls = await window.chatty.getPolls(split.broadcasterId);
+      const poll = polls.items?.[0];
+      const pollEl = split.element.querySelector('.split-poll');
+
+      if (poll && poll.status === 'ACTIVE') {
+        if (split._activePollId === poll.id && pollEl) {
+          // Update existing poll display
+          this._renderPollContent(pollEl, poll);
+          return;
+        }
+        split._activePollId = poll.id;
+        // Create poll display
+        const el = document.createElement('div');
+        el.className = 'split-poll';
+        this._renderPollContent(el, poll);
+        const chatEl = split.element.querySelector('.split-chat');
+        if (chatEl) chatEl.parentNode.insertBefore(el, chatEl);
+        // Remove old one if exists
+        if (pollEl) pollEl.remove();
+      } else {
+        split._activePollId = null;
+        if (pollEl) pollEl.remove();
+      }
+    } catch { /* ignore */ }
+  }
+
+  _renderPollContent(el, poll) {
+    const totalVotes = poll.choices.reduce((sum, c) => sum + (c.votes || 0), 0);
+    let html = `<div class="poll-title">POLL: ${this._escapeHtml(poll.title)}</div>`;
+    for (const choice of poll.choices) {
+      const votes = choice.votes || 0;
+      const pct = totalVotes > 0 ? Math.round((votes / totalVotes) * 100) : 0;
+      html += `<div class="poll-choice">
+        <div class="poll-bar" style="width:${pct}%"></div>
+        <span class="poll-choice-text">${this._escapeHtml(choice.title)}</span>
+        <span class="poll-choice-pct">${pct}% (${votes})</span>
+      </div>`;
+    }
+    el.innerHTML = html;
   }
 
   _toggleLiveInfo(splitId) {
@@ -459,90 +516,299 @@ class SplitManager {
     const cmd = parts[0].toLowerCase();
     const status = await window.chatty.getAuthStatus();
     const myUserId = status.user?.userId;
+    const bid = split.broadcasterId;
+    const sys = (m) => split.chatView.addSystemMessage(m);
+
+    // Helper: resolve username to user object
+    const resolveUser = async (name) => {
+      if (!name) return null;
+      const u = await window.chatty.getUser(name.replace('@', ''));
+      if (!u || u.error) { sys(`User "${name}" not found.`); return null; }
+      return u;
+    };
+
+    // ── Channel Management ──
 
     if (cmd === '/settitle') {
       const title = parts.slice(1).join(' ');
-      if (!title) {
-        split.chatView.addSystemMessage('Usage: /settitle <new stream title>');
-        return true;
-      }
-      const res = await window.chatty.modifyChannel(split.broadcasterId, { title });
-      if (res.error) {
-        split.chatView.addSystemMessage(`Failed to set title: ${res.error}`);
-      } else {
-        split.chatView.addSystemMessage(`Title updated to: ${title}`);
-        this._updateStreamDetails(split);
-      }
+      if (!title) { sys('Usage: /settitle <new stream title>'); return true; }
+      const res = await window.chatty.modifyChannel(bid, { title });
+      sys(res.error ? `Failed: ${res.error}` : `Title updated to: ${title}`);
+      if (!res.error) this._updateStreamDetails(split);
       return true;
     }
 
     if (cmd === '/setgame') {
-      const query = parts.slice(1).join(' ');
-      this._showGamePicker(split, splitId, query);
+      this._showGamePicker(split, splitId, parts.slice(1).join(' '));
       return true;
     }
 
-    if (cmd === '/warn') {
-      const target = parts[1]?.replace('@', '');
-      const reason = parts.slice(2).join(' ') || 'Warned by moderator';
-      if (!target) {
-        split.chatView.addSystemMessage('Usage: /warn @username <reason>');
-        return true;
-      }
-      const user = await window.chatty.getUser(target);
-      if (!user || user.error) {
-        split.chatView.addSystemMessage(`User "${target}" not found.`);
-        return true;
-      }
-      const res = await window.chatty.warnUser(split.broadcasterId, myUserId, user.id, reason);
-      if (res.error) {
-        split.chatView.addSystemMessage(`Failed to warn ${target}: ${res.error}`);
-      } else {
-        split.chatView.addSystemMessage(`Warned ${target}: ${reason}`);
-      }
-      return true;
-    }
-
-    if (cmd === '/timeout') {
-      const target = parts[1]?.replace('@', '');
-      const duration = parseInt(parts[2]) || 600;
-      const reason = parts.slice(3).join(' ') || '';
-      if (!target) {
-        split.chatView.addSystemMessage('Usage: /timeout @username [seconds] [reason]');
-        return true;
-      }
-      const user = await window.chatty.getUser(target);
-      if (!user || user.error) {
-        split.chatView.addSystemMessage(`User "${target}" not found.`);
-        return true;
-      }
-      const res = await window.chatty.banUser(split.broadcasterId, myUserId, user.id, reason, duration);
-      if (res.error) {
-        split.chatView.addSystemMessage(`Failed to timeout ${target}: ${res.error}`);
-      } else {
-        split.chatView.addSystemMessage(`Timed out ${target} for ${duration}s${reason ? ': ' + reason : ''}`);
-      }
+    if (cmd === '/announce' || cmd === '/announceblue' || cmd === '/announcegreen' || cmd === '/announceorange' || cmd === '/announcepurple') {
+      const message = parts.slice(1).join(' ');
+      if (!message) { sys('Usage: /announce <message>'); return true; }
+      const colorMap = { '/announce': 'primary', '/announceblue': 'blue', '/announcegreen': 'green', '/announceorange': 'orange', '/announcepurple': 'purple' };
+      const res = await window.chatty.sendAnnouncement(bid, myUserId, message, colorMap[cmd]);
+      if (res.error) sys(`Failed: ${res.error}`);
       return true;
     }
 
     if (cmd === '/ban') {
-      const target = parts[1]?.replace('@', '');
-      const reason = parts.slice(2).join(' ') || '';
-      if (!target) {
-        split.chatView.addSystemMessage('Usage: /ban @username [reason]');
-        return true;
-      }
-      const user = await window.chatty.getUser(target);
-      if (!user || user.error) {
-        split.chatView.addSystemMessage(`User "${target}" not found.`);
-        return true;
-      }
-      const res = await window.chatty.banUser(split.broadcasterId, myUserId, user.id, reason, 0);
-      if (res.error) {
-        split.chatView.addSystemMessage(`Failed to ban ${target}: ${res.error}`);
+      const target = parts[1]; const reason = parts.slice(2).join(' ') || '';
+      if (!target) { sys('Usage: /ban @username [reason]'); return true; }
+      const u = await resolveUser(target); if (!u) return true;
+      const res = await window.chatty.banUser(bid, myUserId, u.id, reason, 0);
+      sys(res.error ? `Failed: ${res.error}` : `Banned ${u.display_name || target}`);
+      return true;
+    }
+
+    if (cmd === '/unban' || cmd === '/untimeout') {
+      const target = parts[1];
+      if (!target) { sys(`Usage: ${cmd} @username`); return true; }
+      const u = await resolveUser(target); if (!u) return true;
+      const res = await window.chatty.unbanUser(bid, myUserId, u.id);
+      sys(res.error ? `Failed: ${res.error}` : `Unbanned ${u.display_name || target}`);
+      return true;
+    }
+
+    if (cmd === '/timeout') {
+      const target = parts[1]; const duration = parseInt(parts[2]) || 600; const reason = parts.slice(3).join(' ') || '';
+      if (!target) { sys('Usage: /timeout @username [seconds] [reason]'); return true; }
+      const u = await resolveUser(target); if (!u) return true;
+      const res = await window.chatty.banUser(bid, myUserId, u.id, reason, duration);
+      sys(res.error ? `Failed: ${res.error}` : `Timed out ${u.display_name || target} for ${duration}s`);
+      return true;
+    }
+
+    if (cmd === '/warn') {
+      const target = parts[1]; const reason = parts.slice(2).join(' ') || 'Warned by moderator';
+      if (!target) { sys('Usage: /warn @username <reason>'); return true; }
+      const u = await resolveUser(target); if (!u) return true;
+      const res = await window.chatty.warnUser(bid, myUserId, u.id, reason);
+      sys(res.error ? `Failed: ${res.error}` : `Warned ${u.display_name || target}: ${reason}`);
+      return true;
+    }
+
+    if (cmd === '/clear') {
+      const res = await window.chatty.deleteMessage(bid, myUserId, null);
+      sys(res.error ? `Failed: ${res.error}` : 'Chat cleared.');
+      return true;
+    }
+
+    if (cmd === '/commercial') {
+      const length = parseInt(parts[1]) || 30;
+      const res = await window.chatty.startCommercial(bid, length);
+      sys(res.error ? `Failed: ${res.error}` : `Started ${length}s commercial.`);
+      return true;
+    }
+
+    if (cmd === '/emoteonly') {
+      const res = await window.chatty.updateChatSettings(bid, myUserId, { emote_mode: true });
+      sys(res.error ? `Failed: ${res.error}` : 'Emote-only mode enabled.');
+      return true;
+    }
+    if (cmd === '/emoteonlyoff') {
+      const res = await window.chatty.updateChatSettings(bid, myUserId, { emote_mode: false });
+      sys(res.error ? `Failed: ${res.error}` : 'Emote-only mode disabled.');
+      return true;
+    }
+
+    if (cmd === '/followers') {
+      const mins = parseInt(parts[1]) || 0;
+      const res = await window.chatty.updateChatSettings(bid, myUserId, { follower_mode: true, follower_mode_duration: mins });
+      sys(res.error ? `Failed: ${res.error}` : `Followers-only mode enabled${mins ? ` (${mins} min)` : ''}.`);
+      return true;
+    }
+    if (cmd === '/followersoff') {
+      const res = await window.chatty.updateChatSettings(bid, myUserId, { follower_mode: false });
+      sys(res.error ? `Failed: ${res.error}` : 'Followers-only mode disabled.');
+      return true;
+    }
+
+    if (cmd === '/slow') {
+      const secs = parseInt(parts[1]) || 30;
+      const res = await window.chatty.updateChatSettings(bid, myUserId, { slow_mode: true, slow_mode_wait_time: secs });
+      sys(res.error ? `Failed: ${res.error}` : `Slow mode enabled (${secs}s).`);
+      return true;
+    }
+    if (cmd === '/slowoff') {
+      const res = await window.chatty.updateChatSettings(bid, myUserId, { slow_mode: false });
+      sys(res.error ? `Failed: ${res.error}` : 'Slow mode disabled.');
+      return true;
+    }
+
+    if (cmd === '/subscribers') {
+      const res = await window.chatty.updateChatSettings(bid, myUserId, { subscriber_mode: true });
+      sys(res.error ? `Failed: ${res.error}` : 'Subscribers-only mode enabled.');
+      return true;
+    }
+    if (cmd === '/subscribersoff') {
+      const res = await window.chatty.updateChatSettings(bid, myUserId, { subscriber_mode: false });
+      sys(res.error ? `Failed: ${res.error}` : 'Subscribers-only mode disabled.');
+      return true;
+    }
+
+    if (cmd === '/uniquechat') {
+      const res = await window.chatty.updateChatSettings(bid, myUserId, { unique_chat_mode: true });
+      sys(res.error ? `Failed: ${res.error}` : 'Unique chat mode enabled.');
+      return true;
+    }
+    if (cmd === '/uniquechatoff') {
+      const res = await window.chatty.updateChatSettings(bid, myUserId, { unique_chat_mode: false });
+      sys(res.error ? `Failed: ${res.error}` : 'Unique chat mode disabled.');
+      return true;
+    }
+
+    if (cmd === '/mod') {
+      const target = parts[1];
+      if (!target) { sys('Usage: /mod @username'); return true; }
+      const u = await resolveUser(target); if (!u) return true;
+      const res = await window.chatty.addModerator(bid, u.id);
+      sys(res.error ? `Failed: ${res.error}` : `${u.display_name || target} is now a moderator.`);
+      return true;
+    }
+    if (cmd === '/unmod') {
+      const target = parts[1];
+      if (!target) { sys('Usage: /unmod @username'); return true; }
+      const u = await resolveUser(target); if (!u) return true;
+      const res = await window.chatty.removeModerator(bid, u.id);
+      sys(res.error ? `Failed: ${res.error}` : `${u.display_name || target} is no longer a moderator.`);
+      return true;
+    }
+
+    if (cmd === '/vip') {
+      const target = parts[1];
+      if (!target) { sys('Usage: /vip @username'); return true; }
+      const u = await resolveUser(target); if (!u) return true;
+      const res = await window.chatty.addVIP(bid, u.id);
+      sys(res.error ? `Failed: ${res.error}` : `${u.display_name || target} is now a VIP.`);
+      return true;
+    }
+    if (cmd === '/unvip') {
+      const target = parts[1];
+      if (!target) { sys('Usage: /unvip @username'); return true; }
+      const u = await resolveUser(target); if (!u) return true;
+      const res = await window.chatty.removeVIP(bid, u.id);
+      sys(res.error ? `Failed: ${res.error}` : `${u.display_name || target} is no longer a VIP.`);
+      return true;
+    }
+
+    if (cmd === '/raid') {
+      const target = parts[1];
+      if (!target) { sys('Usage: /raid <channel>'); return true; }
+      const u = await resolveUser(target); if (!u) return true;
+      const res = await window.chatty.startRaid(bid, u.id);
+      sys(res.error ? `Failed: ${res.error}` : `Raiding ${u.display_name || target}!`);
+      return true;
+    }
+    if (cmd === '/unraid') {
+      const res = await window.chatty.cancelRaid(bid);
+      sys(res.error ? `Failed: ${res.error}` : 'Raid cancelled.');
+      return true;
+    }
+
+    if (cmd === '/shoutout') {
+      const target = parts[1];
+      if (!target) { sys('Usage: /shoutout @username'); return true; }
+      const u = await resolveUser(target); if (!u) return true;
+      const res = await window.chatty.sendShoutout(bid, u.id, myUserId);
+      sys(res.error ? `Failed: ${res.error}` : `Shoutout sent for ${u.display_name || target}!`);
+      return true;
+    }
+
+    if (cmd === '/marker') {
+      const desc = parts.slice(1).join(' ') || 'Marker';
+      const res = await window.chatty.createStreamMarker(myUserId, desc);
+      sys(res.error ? `Failed: ${res.error}` : `Stream marker created: ${desc}`);
+      return true;
+    }
+
+    if (cmd === '/shield') {
+      const res = await window.chatty.updateShieldMode(bid, myUserId, true);
+      sys(res.error ? `Failed: ${res.error}` : 'Shield mode activated.');
+      return true;
+    }
+    if (cmd === '/shieldoff') {
+      const res = await window.chatty.updateShieldMode(bid, myUserId, false);
+      sys(res.error ? `Failed: ${res.error}` : 'Shield mode deactivated.');
+      return true;
+    }
+
+    if (cmd === '/endpoll') {
+      const polls = await window.chatty.getPolls(bid);
+      if (!polls.items?.length) { sys('No active poll found.'); return true; }
+      const res = await window.chatty.endPoll(bid, polls.items[0].id, 'TERMINATED');
+      sys(res.error ? `Failed: ${res.error}` : 'Poll ended.');
+      return true;
+    }
+    if (cmd === '/deletepoll') {
+      const polls = await window.chatty.getPolls(bid);
+      if (!polls.items?.length) { sys('No active poll found.'); return true; }
+      const res = await window.chatty.endPoll(bid, polls.items[0].id, 'ARCHIVED');
+      sys(res.error ? `Failed: ${res.error}` : 'Poll deleted.');
+      return true;
+    }
+
+    // ── Twitch user commands ──
+
+    if (cmd === '/block') {
+      const target = parts[1];
+      if (!target) { sys('Usage: /block @username'); return true; }
+      const u = await resolveUser(target); if (!u) return true;
+      const res = await window.chatty.blockUser(u.id);
+      sys(res.error ? `Failed: ${res.error}` : `Blocked ${u.display_name || target}.`);
+      return true;
+    }
+    if (cmd === '/unblock') {
+      const target = parts[1];
+      if (!target) { sys('Usage: /unblock @username'); return true; }
+      const u = await resolveUser(target); if (!u) return true;
+      const res = await window.chatty.unblockUser(u.id);
+      sys(res.error ? `Failed: ${res.error}` : `Unblocked ${u.display_name || target}.`);
+      return true;
+    }
+
+    if (cmd === '/color') {
+      const color = parts[1];
+      if (!color) { sys('Usage: /color <color> (e.g. blue, #FF0000)'); return true; }
+      const res = await window.chatty.updateChatColor(myUserId, color);
+      sys(res.error ? `Failed: ${res.error}` : `Chat color updated to ${color}.`);
+      return true;
+    }
+
+    if (cmd === '/me') {
+      // /me is sent as a regular IRC ACTION message
+      const message = parts.slice(1).join(' ');
+      if (!message) return true;
+      const res = await window.chatty.sendChat(split.channel, `/me ${message}`, bid);
+      if (res.error) sys(`Failed: ${res.error}`);
+      return true;
+    }
+
+    if (cmd === '/mods') {
+      const mods = await window.chatty.getModerators(bid, 100);
+      if (mods.items?.length) {
+        sys(`Moderators: ${mods.items.map(m => m.user_name).join(', ')}`);
       } else {
-        split.chatView.addSystemMessage(`Banned ${target}${reason ? ': ' + reason : ''}`);
+        sys('No moderators found.');
       }
+      return true;
+    }
+
+    if (cmd === '/vips') {
+      const vips = await window.chatty.getVIPs(bid, 100);
+      if (vips.items?.length) {
+        sys(`VIPs: ${vips.items.map(v => v.user_name).join(', ')}`);
+      } else {
+        sys('No VIPs found.');
+      }
+      return true;
+    }
+
+    if (cmd === '/user') {
+      const target = parts[1];
+      if (!target) { sys('Usage: /user @username'); return true; }
+      const u = await resolveUser(target); if (!u) return true;
+      if (split.chatView) split.chatView._showProfileCard(u.login, split.element);
       return true;
     }
 
@@ -627,6 +893,163 @@ class SplitManager {
   }
 
   // ── @mention autocomplete ──
+
+  _getCommandList(split) {
+    const isMod = split.chatView?.isModerator || false;
+    const isBroadcaster = split.chatView?.myUsername === split.channel;
+
+    // Everyone can use these
+    const cmds = [
+      { cmd: '/me', desc: 'Express an action in third person', args: '[message]' },
+      { cmd: '/mods', desc: 'List moderators', args: '' },
+      { cmd: '/vips', desc: 'List VIPs', args: '' },
+      { cmd: '/user', desc: 'View a user\'s profile card', args: '[username]' },
+      { cmd: '/block', desc: 'Block a user', args: '[username]' },
+      { cmd: '/unblock', desc: 'Unblock a user', args: '[username]' },
+      { cmd: '/color', desc: 'Change your chat color', args: '[color]' },
+    ];
+
+    // Mod+ commands
+    if (isMod || isBroadcaster) {
+      cmds.push(
+        { cmd: '/ban', desc: 'Permanently ban a user', args: '[username] [reason]' },
+        { cmd: '/unban', desc: 'Unban a user', args: '[username]' },
+        { cmd: '/timeout', desc: 'Temporarily ban a user', args: '[username] [seconds] [reason]' },
+        { cmd: '/untimeout', desc: 'Remove a timeout', args: '[username]' },
+        { cmd: '/warn', desc: 'Warn a user', args: '[username] [reason]' },
+        { cmd: '/clear', desc: 'Clear chat', args: '' },
+        { cmd: '/announce', desc: 'Send an announcement', args: '[message]' },
+        { cmd: '/announceblue', desc: 'Blue announcement', args: '[message]' },
+        { cmd: '/announcegreen', desc: 'Green announcement', args: '[message]' },
+        { cmd: '/announceorange', desc: 'Orange announcement', args: '[message]' },
+        { cmd: '/announcepurple', desc: 'Purple announcement', args: '[message]' },
+        { cmd: '/slow', desc: 'Enable slow mode', args: '[seconds]' },
+        { cmd: '/slowoff', desc: 'Disable slow mode', args: '' },
+        { cmd: '/followers', desc: 'Followers-only mode', args: '[minutes]' },
+        { cmd: '/followersoff', desc: 'Disable followers-only', args: '' },
+        { cmd: '/subscribers', desc: 'Subscribers-only mode', args: '' },
+        { cmd: '/subscribersoff', desc: 'Disable subs-only', args: '' },
+        { cmd: '/emoteonly', desc: 'Emote-only mode', args: '' },
+        { cmd: '/emoteonlyoff', desc: 'Disable emote-only', args: '' },
+        { cmd: '/uniquechat', desc: 'Unique message mode', args: '' },
+        { cmd: '/uniquechatoff', desc: 'Disable unique mode', args: '' },
+        { cmd: '/shoutout', desc: 'Shoutout a user', args: '[username]' },
+        { cmd: '/shield', desc: 'Activate shield mode', args: '' },
+        { cmd: '/shieldoff', desc: 'Deactivate shield mode', args: '' },
+      );
+    }
+
+    // Broadcaster/editor commands
+    if (isBroadcaster) {
+      cmds.push(
+        { cmd: '/settitle', desc: 'Change stream title', args: '[title]' },
+        { cmd: '/setgame', desc: 'Change stream category', args: '[game]' },
+        { cmd: '/mod', desc: 'Grant moderator', args: '[username]' },
+        { cmd: '/unmod', desc: 'Revoke moderator', args: '[username]' },
+        { cmd: '/vip', desc: 'Grant VIP', args: '[username]' },
+        { cmd: '/unvip', desc: 'Revoke VIP', args: '[username]' },
+        { cmd: '/raid', desc: 'Raid a channel', args: '[channel]' },
+        { cmd: '/unraid', desc: 'Cancel raid', args: '' },
+        { cmd: '/commercial', desc: 'Run a commercial', args: '[length]' },
+        { cmd: '/marker', desc: 'Add a stream marker', args: '[description]' },
+        { cmd: '/endpoll', desc: 'End the active poll', args: '' },
+        { cmd: '/deletepoll', desc: 'Delete the active poll', args: '' },
+      );
+    }
+
+    return cmds.sort((a, b) => a.cmd.localeCompare(b.cmd));
+  }
+
+  _setupCommandAutocomplete(inputEl, split) {
+    split._cmdOpen = false;
+    split._cmdIdx = 0;
+    let dropdown = null;
+    let matches = [];
+
+    const close = () => {
+      if (dropdown) { dropdown.remove(); dropdown = null; }
+      split._cmdOpen = false;
+      matches = [];
+      split._cmdIdx = 0;
+    };
+
+    const render = () => {
+      if (!dropdown) {
+        dropdown = document.createElement('div');
+        dropdown.className = 'cmd-autocomplete';
+        inputEl.parentElement.appendChild(dropdown);
+      }
+      dropdown.innerHTML = matches
+        .map((c, i) => `<div class="cmd-item${i === split._cmdIdx ? ' active' : ''}" data-idx="${i}">
+          <span class="cmd-name">${c.cmd}</span>
+          <span class="cmd-args">${c.args}</span>
+          <span class="cmd-desc">${c.desc}</span>
+        </div>`)
+        .join('');
+
+      dropdown.querySelectorAll('.cmd-item').forEach((el) => {
+        el.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          select(parseInt(el.dataset.idx));
+        });
+      });
+
+      // Scroll active item into view
+      const activeEl = dropdown.querySelector('.cmd-item.active');
+      if (activeEl) activeEl.scrollIntoView({ block: 'nearest' });
+    };
+
+    const select = (idx) => {
+      if (!matches[idx]) { close(); return; }
+      inputEl.value = matches[idx].cmd + ' ';
+      inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
+      close();
+      inputEl.focus();
+    };
+
+    inputEl.addEventListener('input', () => {
+      const val = inputEl.value;
+      // Only trigger when the input starts with / and has no space yet (still typing command name)
+      if (!val.startsWith('/') || val.includes(' ') || val.length < 1) { close(); return; }
+
+      const partial = val.toLowerCase();
+      const cmds = this._getCommandList(split);
+      matches = val === '/'
+        ? cmds
+        : cmds.filter(c => c.cmd.startsWith(partial));
+
+      if (matches.length === 0) { close(); return; }
+
+      split._cmdOpen = true;
+      split._cmdIdx = 0;
+      render();
+    });
+
+    inputEl.addEventListener('keydown', (e) => {
+      if (!split._cmdOpen) return;
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        split._cmdIdx = (split._cmdIdx + 1) % matches.length;
+        render();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        split._cmdIdx = (split._cmdIdx - 1 + matches.length) % matches.length;
+        render();
+      } else if (e.key === 'Tab' || e.key === 'Enter') {
+        if (split._cmdOpen && matches.length > 0) {
+          e.preventDefault();
+          select(split._cmdIdx);
+        }
+      } else if (e.key === 'Escape') {
+        close();
+      }
+    });
+
+    inputEl.addEventListener('blur', () => {
+      setTimeout(close, 150);
+    });
+  }
 
   _setupMentionAutocomplete(inputEl, split) {
     split._mentionOpen = false;

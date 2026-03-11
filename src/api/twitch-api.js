@@ -41,6 +41,38 @@ class TwitchAPI {
     return res.json();
   }
 
+  async _patch(path, params = {}, body = null) {
+    const url = new URL(`${BASE}${path}`);
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined && v !== null) url.searchParams.set(k, v);
+    }
+    const opts = { method: 'PATCH', headers: { ...this._headers(), 'Content-Type': 'application/json' } };
+    if (body) opts.body = JSON.stringify(body);
+    const res = await fetch(url, opts);
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`${res.status}: ${text}`);
+    }
+    if (res.status === 204) return {};
+    return res.json();
+  }
+
+  async _put(path, params = {}, body = null) {
+    const url = new URL(`${BASE}${path}`);
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined && v !== null) url.searchParams.set(k, v);
+    }
+    const opts = { method: 'PUT', headers: { ...this._headers(), 'Content-Type': 'application/json' } };
+    if (body) opts.body = JSON.stringify(body);
+    const res = await fetch(url, opts);
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`${res.status}: ${text}`);
+    }
+    if (res.status === 204) return {};
+    return res.json();
+  }
+
   async _delete(path, params = {}) {
     const url = new URL(`${BASE}${path}`);
     for (const [k, v] of Object.entries(params)) {
@@ -284,11 +316,12 @@ class TwitchAPI {
 
   async deleteMessage(broadcasterId, moderatorId, messageId) {
     try {
-      await this._delete('/moderation/chat', {
+      const params = {
         broadcaster_id: broadcasterId,
         moderator_id: moderatorId,
-        message_id: messageId,
-      });
+      };
+      if (messageId) params.message_id = messageId;
+      await this._delete('/moderation/chat', params);
       return { success: true };
     } catch (err) {
       return { error: err.message };
@@ -334,6 +367,248 @@ class TwitchAPI {
         const text = await res.text();
         throw new Error(`${res.status}: ${text}`);
       }
+      return { success: true };
+    } catch (err) {
+      return { error: err.message };
+    }
+  }
+
+  // ── Announcements ──
+
+  async sendAnnouncement(broadcasterId, moderatorId, message, color = 'primary') {
+    try {
+      await this._post('/chat/announcements', {
+        broadcaster_id: broadcasterId,
+        moderator_id: moderatorId,
+      }, { message, color });
+      return { success: true };
+    } catch (err) {
+      return { error: err.message };
+    }
+  }
+
+  // ── Unban ──
+
+  async unbanUser(broadcasterId, moderatorId, userId) {
+    try {
+      await this._delete('/moderation/bans', {
+        broadcaster_id: broadcasterId,
+        moderator_id: moderatorId,
+        user_id: userId,
+      });
+      return { success: true };
+    } catch (err) {
+      return { error: err.message };
+    }
+  }
+
+  // ── Chat Settings ──
+
+  async updateChatSettings(broadcasterId, moderatorId, settings) {
+    try {
+      await this._patch('/chat/settings', {
+        broadcaster_id: broadcasterId,
+        moderator_id: moderatorId,
+      }, settings);
+      return { success: true };
+    } catch (err) {
+      return { error: err.message };
+    }
+  }
+
+  // ── Moderator Management ──
+
+  async addModerator(broadcasterId, userId) {
+    try {
+      await this._post('/moderation/moderators', {
+        broadcaster_id: broadcasterId,
+        user_id: userId,
+      });
+      return { success: true };
+    } catch (err) {
+      return { error: err.message };
+    }
+  }
+
+  async removeModerator(broadcasterId, userId) {
+    try {
+      await this._delete('/moderation/moderators', {
+        broadcaster_id: broadcasterId,
+        user_id: userId,
+      });
+      return { success: true };
+    } catch (err) {
+      return { error: err.message };
+    }
+  }
+
+  // ── VIP Management ──
+
+  async addVIP(broadcasterId, userId) {
+    try {
+      await this._post('/channels/vips', {
+        broadcaster_id: broadcasterId,
+        user_id: userId,
+      });
+      return { success: true };
+    } catch (err) {
+      return { error: err.message };
+    }
+  }
+
+  async removeVIP(broadcasterId, userId) {
+    try {
+      await this._delete('/channels/vips', {
+        broadcaster_id: broadcasterId,
+        user_id: userId,
+      });
+      return { success: true };
+    } catch (err) {
+      return { error: err.message };
+    }
+  }
+
+  // ── Raids ──
+
+  async startRaid(fromBroadcasterId, toBroadcasterId) {
+    try {
+      await this._post('/raids', {
+        from_broadcaster_id: fromBroadcasterId,
+        to_broadcaster_id: toBroadcasterId,
+      });
+      return { success: true };
+    } catch (err) {
+      return { error: err.message };
+    }
+  }
+
+  async cancelRaid(broadcasterId) {
+    try {
+      await this._delete('/raids', {
+        broadcaster_id: broadcasterId,
+      });
+      return { success: true };
+    } catch (err) {
+      return { error: err.message };
+    }
+  }
+
+  // ── Shoutouts ──
+
+  async sendShoutout(fromBroadcasterId, toBroadcasterId, moderatorId) {
+    try {
+      await this._post('/chat/shoutouts', {
+        from_broadcaster_id: fromBroadcasterId,
+        to_broadcaster_id: toBroadcasterId,
+        moderator_id: moderatorId,
+      });
+      return { success: true };
+    } catch (err) {
+      return { error: err.message };
+    }
+  }
+
+  // ── Stream Markers ──
+
+  async createStreamMarker(userId, description) {
+    try {
+      await this._post('/streams/markers', {}, {
+        user_id: userId,
+        description,
+      });
+      return { success: true };
+    } catch (err) {
+      return { error: err.message };
+    }
+  }
+
+  // ── Shield Mode ──
+
+  async updateShieldMode(broadcasterId, moderatorId, isActive) {
+    try {
+      await this._put('/moderation/shield_mode', {
+        broadcaster_id: broadcasterId,
+        moderator_id: moderatorId,
+      }, { is_active: isActive });
+      return { success: true };
+    } catch (err) {
+      return { error: err.message };
+    }
+  }
+
+  // ── User Blocks ──
+
+  async blockUser(targetUserId) {
+    try {
+      await this._put('/users/blocks', {
+        target_user_id: targetUserId,
+      });
+      return { success: true };
+    } catch (err) {
+      return { error: err.message };
+    }
+  }
+
+  async unblockUser(targetUserId) {
+    try {
+      await this._delete('/users/blocks', {
+        target_user_id: targetUserId,
+      });
+      return { success: true };
+    } catch (err) {
+      return { error: err.message };
+    }
+  }
+
+  // ── Chat Color ──
+
+  async updateChatColor(userId, color) {
+    try {
+      await this._put('/chat/color', {
+        user_id: userId,
+        color,
+      });
+      return { success: true };
+    } catch (err) {
+      return { error: err.message };
+    }
+  }
+
+  // ── Commercial ──
+
+  async startCommercial(broadcasterId, length) {
+    try {
+      await this._post('/channels/commercial', {}, {
+        broadcaster_id: broadcasterId,
+        length,
+      });
+      return { success: true };
+    } catch (err) {
+      return { error: err.message };
+    }
+  }
+
+  // ── Polls ──
+
+  async getPolls(broadcasterId) {
+    try {
+      const data = await this._get('/polls', {
+        broadcaster_id: broadcasterId,
+        first: 1,
+      });
+      return { items: data.data || [] };
+    } catch (err) {
+      return { error: err.message, items: [] };
+    }
+  }
+
+  async endPoll(broadcasterId, pollId, status) {
+    try {
+      await this._patch('/polls', {}, {
+        broadcaster_id: broadcasterId,
+        id: pollId,
+        status,
+      });
       return { success: true };
     } catch (err) {
       return { error: err.message };

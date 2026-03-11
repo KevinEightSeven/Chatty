@@ -39,6 +39,44 @@ contextBridge.exposeInMainWorld('chatty', {
   modifyChannel: (broadcasterId, data) =>
     ipcRenderer.invoke('twitch:modify-channel', broadcasterId, data),
 
+  // New Twitch API methods
+  sendAnnouncement: (broadcasterId, moderatorId, message, color) =>
+    ipcRenderer.invoke('twitch:send-announcement', broadcasterId, moderatorId, message, color),
+  unbanUser: (broadcasterId, moderatorId, userId) =>
+    ipcRenderer.invoke('twitch:unban-user', broadcasterId, moderatorId, userId),
+  updateChatSettings: (broadcasterId, moderatorId, settings) =>
+    ipcRenderer.invoke('twitch:update-chat-settings', broadcasterId, moderatorId, settings),
+  addModerator: (broadcasterId, userId) =>
+    ipcRenderer.invoke('twitch:add-moderator', broadcasterId, userId),
+  removeModerator: (broadcasterId, userId) =>
+    ipcRenderer.invoke('twitch:remove-moderator', broadcasterId, userId),
+  addVIP: (broadcasterId, userId) =>
+    ipcRenderer.invoke('twitch:add-vip', broadcasterId, userId),
+  removeVIP: (broadcasterId, userId) =>
+    ipcRenderer.invoke('twitch:remove-vip', broadcasterId, userId),
+  startRaid: (fromId, toId) =>
+    ipcRenderer.invoke('twitch:start-raid', fromId, toId),
+  cancelRaid: (broadcasterId) =>
+    ipcRenderer.invoke('twitch:cancel-raid', broadcasterId),
+  sendShoutout: (fromId, toId, modId) =>
+    ipcRenderer.invoke('twitch:send-shoutout', fromId, toId, modId),
+  createStreamMarker: (userId, description) =>
+    ipcRenderer.invoke('twitch:create-stream-marker', userId, description),
+  updateShieldMode: (broadcasterId, moderatorId, isActive) =>
+    ipcRenderer.invoke('twitch:update-shield-mode', broadcasterId, moderatorId, isActive),
+  blockUser: (targetUserId) =>
+    ipcRenderer.invoke('twitch:block-user', targetUserId),
+  unblockUser: (targetUserId) =>
+    ipcRenderer.invoke('twitch:unblock-user', targetUserId),
+  updateChatColor: (userId, color) =>
+    ipcRenderer.invoke('twitch:update-chat-color', userId, color),
+  startCommercial: (broadcasterId, length) =>
+    ipcRenderer.invoke('twitch:start-commercial', broadcasterId, length),
+  getPolls: (broadcasterId) =>
+    ipcRenderer.invoke('twitch:get-polls', broadcasterId),
+  endPoll: (broadcasterId, pollId, status) =>
+    ipcRenderer.invoke('twitch:end-poll', broadcasterId, pollId, status),
+
   // IRC Chat
   joinChat: (channel) => ipcRenderer.invoke('chat:join', channel),
   partChat: (channel) => ipcRenderer.invoke('chat:part', channel),
@@ -88,6 +126,12 @@ contextBridge.exposeInMainWorld('chatty', {
 
   // Auto-update
   checkForUpdates: () => ipcRenderer.invoke('updater:check'),
+  downloadUpdate: () => ipcRenderer.invoke('updater:download'),
+  onUpdateProgress: (callback) => {
+    const handler = (_event, progress) => callback(progress);
+    ipcRenderer.on('updater:progress', handler);
+    return () => ipcRenderer.removeListener('updater:progress', handler);
+  },
 
   // External links
   openExternal: (url) => ipcRenderer.send('open-external', url),

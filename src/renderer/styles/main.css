@@ -271,7 +271,7 @@ html, body {
 #main-content {
   flex: 1;
   display: flex;
-  height: calc(100vh - 62px);
+  height: calc(100vh - 68px);
   min-width: 0;
   overflow: hidden;
 }
@@ -466,7 +466,6 @@ img.chat-badge {
   flex-shrink: 0;
   position: relative;
   min-width: 0;
-  overflow: hidden;
 }
 
 .split-input input {
@@ -911,6 +910,12 @@ img.chat-badge {
   margin: 2px 0;
 }
 
+.chat-announcement {
+  border-radius: 4px;
+  padding: 6px 8px;
+  margin: 2px 0;
+}
+
 .search-loading,
 .search-empty {
   text-align: center;
@@ -957,8 +962,7 @@ img.chat-badge {
   color: var(--text-primary);
   border-bottom: 1px solid rgba(200, 0, 0, 0.25);
   flex-shrink: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: hidden;
 }
 
 .split-live-info::-webkit-scrollbar {
@@ -974,7 +978,7 @@ img.chat-badge {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 8px;
+  padding: 5px 8px;
   white-space: nowrap;
 }
 
@@ -1010,7 +1014,26 @@ img.chat-badge {
 .live-info-title {
   font-weight: 700;
   color: var(--text-primary);
-  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.live-info-title:hover {
+  text-decoration: underline;
+}
+
+.split-live-info.expanded .live-info-scroll {
+  flex-wrap: wrap;
+  white-space: normal;
+}
+
+.split-live-info.expanded .live-info-title {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
 }
 
 /* Action buttons now live in tab bar (#split-actions) */
@@ -1055,6 +1078,62 @@ img.chat-badge {
 .mention-item:hover,
 .mention-item.active {
   background: var(--bg-hover);
+}
+
+/* ── Active Poll Display ── */
+.split-poll {
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  padding: 6px 10px;
+  flex-shrink: 0;
+}
+
+.poll-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #a855f7;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.poll-choice {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 3px 6px;
+  margin: 2px 0;
+  border-radius: 3px;
+  overflow: hidden;
+  font-size: 11px;
+  min-height: 20px;
+}
+
+.poll-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  background: rgba(168, 85, 247, 0.15);
+  border-radius: 3px;
+  transition: width 0.3s;
+}
+
+.poll-choice-text {
+  position: relative;
+  color: var(--text-primary);
+  font-weight: 500;
+  z-index: 1;
+}
+
+.poll-choice-pct {
+  position: relative;
+  color: var(--text-muted);
+  font-size: 10px;
+  z-index: 1;
+  flex-shrink: 0;
+  margin-left: 8px;
 }
 
 /* ── Game Picker (for /setgame) ── */
@@ -1156,6 +1235,56 @@ img.chat-badge {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ── Command autocomplete ── */
+.cmd-autocomplete {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  max-height: 220px;
+  overflow-y: auto;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 6px 6px 0 0;
+  z-index: 50;
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.cmd-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.cmd-item:hover,
+.cmd-item.active {
+  background: var(--bg-hover);
+}
+
+.cmd-name {
+  font-weight: 700;
+  color: var(--text-primary);
+  flex-shrink: 0;
+}
+
+.cmd-args {
+  color: var(--text-muted);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.cmd-desc {
+  color: var(--text-secondary);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-left: auto;
 }
 
 /* ── Drag and drop ── */
@@ -1749,7 +1878,7 @@ img.chat-badge {
   flex: 1;
 }
 
-#update-download {
+#update-install {
   background: #2563eb;
   color: #fff;
   border: none;
@@ -1760,7 +1889,7 @@ img.chat-badge {
   cursor: pointer;
 }
 
-#update-download:hover {
+#update-install:hover {
   background: #3b82f6;
 }
 

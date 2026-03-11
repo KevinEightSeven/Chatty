@@ -232,6 +232,96 @@ ipcMain.handle('twitch:modify-channel', async (_event, broadcasterId, data) => {
   return twitchAPI.modifyChannelInfo(broadcasterId, data);
 });
 
+ipcMain.handle('twitch:send-announcement', async (_event, broadcasterId, moderatorId, message, color) => {
+  if (!twitchAPI) return { error: 'Not authenticated' };
+  return twitchAPI.sendAnnouncement(broadcasterId, moderatorId, message, color);
+});
+
+ipcMain.handle('twitch:unban-user', async (_event, broadcasterId, moderatorId, userId) => {
+  if (!twitchAPI) return { error: 'Not authenticated' };
+  return twitchAPI.unbanUser(broadcasterId, moderatorId, userId);
+});
+
+ipcMain.handle('twitch:update-chat-settings', async (_event, broadcasterId, moderatorId, settings) => {
+  if (!twitchAPI) return { error: 'Not authenticated' };
+  return twitchAPI.updateChatSettings(broadcasterId, moderatorId, settings);
+});
+
+ipcMain.handle('twitch:add-moderator', async (_event, broadcasterId, userId) => {
+  if (!twitchAPI) return { error: 'Not authenticated' };
+  return twitchAPI.addModerator(broadcasterId, userId);
+});
+
+ipcMain.handle('twitch:remove-moderator', async (_event, broadcasterId, userId) => {
+  if (!twitchAPI) return { error: 'Not authenticated' };
+  return twitchAPI.removeModerator(broadcasterId, userId);
+});
+
+ipcMain.handle('twitch:add-vip', async (_event, broadcasterId, userId) => {
+  if (!twitchAPI) return { error: 'Not authenticated' };
+  return twitchAPI.addVIP(broadcasterId, userId);
+});
+
+ipcMain.handle('twitch:remove-vip', async (_event, broadcasterId, userId) => {
+  if (!twitchAPI) return { error: 'Not authenticated' };
+  return twitchAPI.removeVIP(broadcasterId, userId);
+});
+
+ipcMain.handle('twitch:start-raid', async (_event, fromId, toId) => {
+  if (!twitchAPI) return { error: 'Not authenticated' };
+  return twitchAPI.startRaid(fromId, toId);
+});
+
+ipcMain.handle('twitch:cancel-raid', async (_event, broadcasterId) => {
+  if (!twitchAPI) return { error: 'Not authenticated' };
+  return twitchAPI.cancelRaid(broadcasterId);
+});
+
+ipcMain.handle('twitch:send-shoutout', async (_event, fromId, toId, modId) => {
+  if (!twitchAPI) return { error: 'Not authenticated' };
+  return twitchAPI.sendShoutout(fromId, toId, modId);
+});
+
+ipcMain.handle('twitch:create-stream-marker', async (_event, userId, description) => {
+  if (!twitchAPI) return { error: 'Not authenticated' };
+  return twitchAPI.createStreamMarker(userId, description);
+});
+
+ipcMain.handle('twitch:update-shield-mode', async (_event, broadcasterId, moderatorId, isActive) => {
+  if (!twitchAPI) return { error: 'Not authenticated' };
+  return twitchAPI.updateShieldMode(broadcasterId, moderatorId, isActive);
+});
+
+ipcMain.handle('twitch:block-user', async (_event, targetUserId) => {
+  if (!twitchAPI) return { error: 'Not authenticated' };
+  return twitchAPI.blockUser(targetUserId);
+});
+
+ipcMain.handle('twitch:unblock-user', async (_event, targetUserId) => {
+  if (!twitchAPI) return { error: 'Not authenticated' };
+  return twitchAPI.unblockUser(targetUserId);
+});
+
+ipcMain.handle('twitch:update-chat-color', async (_event, userId, color) => {
+  if (!twitchAPI) return { error: 'Not authenticated' };
+  return twitchAPI.updateChatColor(userId, color);
+});
+
+ipcMain.handle('twitch:start-commercial', async (_event, broadcasterId, length) => {
+  if (!twitchAPI) return { error: 'Not authenticated' };
+  return twitchAPI.startCommercial(broadcasterId, length);
+});
+
+ipcMain.handle('twitch:get-polls', async (_event, broadcasterId) => {
+  if (!twitchAPI) return { error: 'Not authenticated', items: [] };
+  return twitchAPI.getPolls(broadcasterId);
+});
+
+ipcMain.handle('twitch:end-poll', async (_event, broadcasterId, pollId, status) => {
+  if (!twitchAPI) return { error: 'Not authenticated' };
+  return twitchAPI.endPoll(broadcasterId, pollId, status);
+});
+
 // ── EventSub (Alerts) ──
 
 ipcMain.handle('eventsub:start', async () => {
@@ -465,6 +555,13 @@ ipcMain.handle('profile-card:mod-action', async (_event, action, broadcasterId, 
 // Auto-update
 ipcMain.handle('updater:check', async () => {
   return checkForUpdates();
+});
+
+ipcMain.handle('updater:download', async () => {
+  const { downloadAndInstall } = require('./auto-updater');
+  return downloadAndInstall((progress) => {
+    mainWindow?.webContents.send('updater:progress', progress);
+  });
 });
 
 // Settings
