@@ -150,6 +150,26 @@ html, body {
   gap: 3px;
 }
 
+#btn-add-tab {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+#btn-add-tab:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
 #tabs-container {
   display: flex;
   flex: 1;
@@ -207,24 +227,44 @@ html, body {
   color: var(--text-primary);
 }
 
-#btn-add-tab {
+/* Split action buttons in tab bar */
+#split-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  margin-left: 4px;
+}
+
+#split-actions button {
   background: none;
-  border: 1px solid var(--border);
+  border: none;
   color: var(--text-muted);
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 16px;
+  font-size: 13px;
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
+  padding: 0;
 }
 
-#btn-add-tab:hover {
+#split-actions button:hover:not(:disabled) {
   background: var(--bg-hover);
   color: var(--text-primary);
+}
+
+#split-actions button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+#split-actions button.active {
+  background: var(--text-muted);
+  color: var(--text-primary);
+  border-radius: 3px;
 }
 
 /* ── Main Content ── */
@@ -254,12 +294,11 @@ html, body {
   position: relative;
 }
 
-/* Split header */
+/* Split header — minimal, just channel name */
 .split-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  height: 36px;
+  height: 28px;
   padding: 0 10px;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border);
@@ -271,15 +310,6 @@ html, body {
   cursor: grabbing;
 }
 
-.split-header-left {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  overflow: hidden;
-  flex: 1;
-  min-width: 0;
-}
-
 .split-channel-name {
   font-size: 13px;
   font-weight: 600;
@@ -287,8 +317,8 @@ html, body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  flex-shrink: 1;
-  min-width: 20px;
+  flex: 1;
+  min-width: 0;
   cursor: pointer;
 }
 
@@ -297,30 +327,13 @@ html, body {
   text-decoration: underline;
 }
 
-.split-header-actions {
-  display: flex;
-  gap: 2px;
-  flex-shrink: 0;
+/* Selected split highlight */
+.split-panel.selected {
+  border-color: var(--accent);
 }
 
-.split-header-actions button {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  width: 26px;
-  height: 26px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 13px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-}
-
-.split-header-actions button:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
+.split-panel.selected .split-header {
+  background: var(--bg-tertiary);
 }
 
 /* Chat messages area */
@@ -990,30 +1003,7 @@ img.chat-badge {
   flex-shrink: 0;
 }
 
-.split-header-sep {
-  color: var(--border);
-  font-size: 12px;
-  margin: 0 1px;
-  pointer-events: none;
-}
-
-/* Active toggle buttons in header */
-.header-btn-active {
-  background: var(--text-muted) !important;
-  color: var(--text-primary) !important;
-  border-radius: 3px;
-}
-
-/* Header toggle button base styling */
-.btn-split-game {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.btn-split-game svg {
-  pointer-events: none;
-}
+/* Action buttons now live in tab bar (#split-actions) */
 
 /* ── @mention highlighting ── */
 .chat-message-mention {

@@ -13,6 +13,7 @@ class SplitManager {
     this._alertsRemoveListener = null;
     this._alertsSplitId = null;
     this._dragState = null;
+    this.selectedSplitId = null;
   }
 
   // ── Tab management ──
@@ -72,18 +73,7 @@ class SplitManager {
     panel.style.flex = '1';
     panel.innerHTML = `
       <div class="split-header">
-        <div class="split-header-left">
-          <span class="split-channel-name">No channel</span>
-        </div>
-        <div class="split-header-actions">
-          <button class="btn-split-game" title="Toggle stream info" style="display:none;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 12h4m-2-2v4m6-1h.01M18 11h.01"/><rect x="2" y="6" width="20" height="12" rx="2"/></svg></button>
-          <button class="btn-split-users" title="User list" style="display:none;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></button>
-          <button class="btn-split-video" title="Video player" style="display:none;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg></button>
-          <span class="split-header-sep" style="display:none;">|</span>
-          <button class="btn-split-search" title="Change channel"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button>
-          <button class="btn-split-add" title="Add split">+</button>
-          <button class="btn-split-close" title="Close split"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
-        </div>
+        <span class="split-channel-name">No channel</span>
       </div>
       <div class="split-live-info" style="display:none;">
         <div class="live-info-scroll">
@@ -131,31 +121,12 @@ class SplitManager {
     panel.querySelector('.btn-connect-chat').addEventListener('click', () => {
       this._openSearchForSplit(splitId);
     });
-    panel.querySelector('.btn-split-search').addEventListener('click', () => {
-      this._openSearchForSplit(splitId);
-    });
-    panel.querySelector('.btn-split-add').addEventListener('click', () => {
-      this.addSplit(tabId);
-      saveSession();
-    });
-    panel.querySelector('.btn-split-close').addEventListener('click', () => {
-      if (splitData._isAlertsSplit) {
-        this._cleanupAlertsSplit();
-      }
-      if (splitData._chattersInterval) clearInterval(splitData._chattersInterval);
-      this.removeSplit(splitId);
-      saveSession();
-    });
-    panel.querySelector('.btn-split-game').addEventListener('click', () => {
-      this._toggleLiveInfo(splitId);
-    });
-    panel.querySelector('.btn-split-users').addEventListener('click', () => {
-      this._toggleUserListSplit(splitId);
-    });
-    panel.querySelector('.btn-split-video').addEventListener('click', () => {
-      if (splitData.channel) {
-        window.chatty.openPopoutPlayer(splitData.channel);
-      }
+
+    // Click panel to select it
+    panel.addEventListener('mousedown', (e) => {
+      // Don't select when clicking input or buttons
+      if (e.target.closest('input') || e.target.closest('button')) return;
+      this.selectSplit(splitId);
     });
 
     // Click channel name to open popout video player
@@ -167,6 +138,11 @@ class SplitManager {
 
     // Drag-and-drop reordering
     this._setupDragDrop(panel, splitId);
+
+    // Auto-select if it's the first/only split
+    if (!this.selectedSplitId) {
+      this.selectSplit(splitId);
+    }
 
     return splitData;
   }
@@ -188,9 +164,49 @@ class SplitManager {
     }
   }
 
+  selectSplit(splitId) {
+    // Deselect previous
+    if (this.selectedSplitId) {
+      const prev = this.splits.get(this.selectedSplitId);
+      if (prev?.element) prev.element.classList.remove('selected');
+    }
+
+    this.selectedSplitId = splitId;
+    const split = this.splits.get(splitId);
+    if (split?.element) split.element.classList.add('selected');
+
+    this._updateActionButtons();
+  }
+
+  _updateActionButtons() {
+    const split = this.selectedSplitId ? this.splits.get(this.selectedSplitId) : null;
+    const hasChannel = split?.channel;
+
+    const infoBtn = document.getElementById('act-info');
+    const usersBtn = document.getElementById('act-users');
+    const videoBtn = document.getElementById('act-video');
+    const searchBtn = document.getElementById('act-search');
+    const closeBtn = document.getElementById('act-close');
+
+    if (infoBtn) infoBtn.disabled = !hasChannel;
+    if (usersBtn) usersBtn.disabled = !hasChannel;
+    if (videoBtn) videoBtn.disabled = !hasChannel;
+    if (searchBtn) searchBtn.disabled = !split;
+    if (closeBtn) closeBtn.disabled = !split;
+
+    // Update active states
+    if (infoBtn) infoBtn.classList.toggle('active', !!(split?._showLiveInfo && split?.streamDetails));
+    if (usersBtn) usersBtn.classList.toggle('active', !!split?._userListOpen);
+  }
+
   removeSplit(splitId) {
     const split = this.splits.get(splitId);
     if (!split) return;
+
+    // Clear selection if this was selected
+    if (this.selectedSplitId === splitId) {
+      this.selectedSplitId = null;
+    }
 
     if (split.chatView) split.chatView.destroy();
     if (split._viewerInterval) clearInterval(split._viewerInterval);
@@ -229,6 +245,12 @@ class SplitManager {
     } else {
       this._equalizeSplits(tabId);
     }
+
+    // Auto-select another split if available
+    if (!this.selectedSplitId && tabSplitList.length > 0) {
+      this.selectSplit(tabSplitList[0]);
+    }
+    this._updateActionButtons();
   }
 
   destroyTabSplits(tabId) {
@@ -274,11 +296,10 @@ class SplitManager {
     // Update header
     split.element.querySelector('.split-channel-name').textContent = user.display_name || ch;
 
-    // Show toggle buttons
-    split.element.querySelector('.btn-split-game').style.display = '';
-    split.element.querySelector('.btn-split-users').style.display = '';
-    split.element.querySelector('.btn-split-video').style.display = '';
-    split.element.querySelector('.split-header-sep').style.display = '';
+    // Update tab bar action buttons if this split is selected
+    if (this.selectedSplitId === splitId) {
+      this._updateActionButtons();
+    }
 
     // Build chat body
     const body = split.element.querySelector('.split-body');
@@ -344,6 +365,9 @@ class SplitManager {
       }
     }
 
+    // Update tab bar buttons if this split is selected
+    this._updateActionButtons();
+
     saveSession();
   }
 
@@ -404,7 +428,7 @@ class SplitManager {
     if (!split) return;
 
     split._showLiveInfo = !split._showLiveInfo;
-    split.element.querySelector('.btn-split-game').classList.toggle('header-btn-active', split._showLiveInfo);
+    this._updateActionButtons();
 
     const liveInfoEl = split.element.querySelector('.split-live-info');
     if (liveInfoEl) {
@@ -535,8 +559,6 @@ class SplitManager {
     const body = split.element.querySelector('.split-body');
     const existing = body.querySelector('.user-list-sidebar');
 
-    const usersBtn = split.element.querySelector('.btn-split-users');
-
     if (existing) {
       // Close the sidebar
       existing.remove();
@@ -553,7 +575,7 @@ class SplitManager {
         split._chattersInterval = null;
       }
       split._userListOpen = false;
-      if (usersBtn) usersBtn.classList.remove('header-btn-active');
+      this._updateActionButtons();
       saveSession();
       return;
     }
@@ -588,7 +610,7 @@ class SplitManager {
     this._setupUserListGutter(gutter, chatWrap, sidebar);
 
     split._userListOpen = true;
-    if (usersBtn) usersBtn.classList.add('header-btn-active');
+    this._updateActionButtons();
 
     // Fetch and render users
     this._fetchAndMergeUsers(splitId);
@@ -785,12 +807,7 @@ class SplitManager {
 
     newSplit.element.querySelector('.split-channel-name').textContent = 'Alerts';
 
-    newSplit.element.querySelector('.btn-split-game').style.display = 'none';
-    newSplit.element.querySelector('.btn-split-users').style.display = 'none';
-    newSplit.element.querySelector('.btn-split-video').style.display = 'none';
-    newSplit.element.querySelector('.split-header-sep').style.display = 'none';
-    newSplit.element.querySelector('.btn-split-add').style.display = 'none';
-    newSplit.element.querySelector('.btn-split-search').style.display = 'none';
+    // Alerts panel has no per-split actions
 
     const body = newSplit.element.querySelector('.split-body');
     body.innerHTML = `
@@ -1098,18 +1115,19 @@ class SplitManager {
         const minDist = Math.min(distLeft, distRight, distTop, distBottom);
 
         let pos, css;
+        const base = 'display:block;position:absolute;background:rgba(161,161,170,0.15);border:2px solid var(--accent);z-index:50;pointer-events:none;';
         if (minDist === distLeft) {
           pos = 'left';
-          css = 'display:block;position:absolute;top:0;bottom:0;left:0;width:3px;background:var(--accent);z-index:50;border-radius:2px;pointer-events:none;';
+          css = base + 'top:0;bottom:0;left:0;width:50%;';
         } else if (minDist === distRight) {
           pos = 'right';
-          css = 'display:block;position:absolute;top:0;bottom:0;right:0;width:3px;background:var(--accent);z-index:50;border-radius:2px;pointer-events:none;';
+          css = base + 'top:0;bottom:0;right:0;width:50%;';
         } else if (minDist === distTop) {
           pos = 'top';
-          css = 'display:block;position:absolute;top:0;left:0;right:0;height:3px;background:var(--accent);z-index:50;border-radius:2px;pointer-events:none;';
+          css = base + 'top:0;left:0;right:0;height:50%;';
         } else {
           pos = 'bottom';
-          css = 'display:block;position:absolute;bottom:0;left:0;right:0;height:3px;background:var(--accent);z-index:50;border-radius:2px;pointer-events:none;';
+          css = base + 'bottom:0;left:0;right:0;height:50%;';
         }
 
         foundTarget = sid;

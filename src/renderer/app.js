@@ -47,6 +47,37 @@ document.addEventListener('DOMContentLoaded', async () => {
     modalManager.showSettingsModal();
   });
 
+  // Split action buttons in tab bar
+  document.getElementById('act-info').addEventListener('click', () => {
+    if (splitManager.selectedSplitId) splitManager._toggleLiveInfo(splitManager.selectedSplitId);
+  });
+  document.getElementById('act-users').addEventListener('click', () => {
+    if (splitManager.selectedSplitId) splitManager._toggleUserListSplit(splitManager.selectedSplitId);
+  });
+  document.getElementById('act-video').addEventListener('click', () => {
+    const split = splitManager.splits.get(splitManager.selectedSplitId);
+    if (split?.channel) window.chatty.openPopoutPlayer(split.channel);
+  });
+  document.getElementById('act-search').addEventListener('click', () => {
+    if (splitManager.selectedSplitId) splitManager._openSearchForSplit(splitManager.selectedSplitId);
+  });
+  document.getElementById('act-add').addEventListener('click', () => {
+    const tab = tabManager.getActiveTab();
+    if (tab) {
+      splitManager.addSplit(tab.id);
+      saveSession();
+    }
+  });
+  document.getElementById('act-close').addEventListener('click', () => {
+    if (splitManager.selectedSplitId) {
+      const split = splitManager.splits.get(splitManager.selectedSplitId);
+      if (split?._isAlertsSplit) splitManager._cleanupAlertsSplit();
+      if (split?._chattersInterval) clearInterval(split._chattersInterval);
+      splitManager.removeSplit(splitManager.selectedSplitId);
+      saveSession();
+    }
+  });
+
   const session = await window.chatty.getConfig('session');
   let restored = false;
 
