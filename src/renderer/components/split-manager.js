@@ -1,7 +1,8 @@
 /**
- * SplitManager — Manages split panels within tabs (Chatterino-style SplitContainer).
- * Features: equal-size splits, drag-and-drop reorder, live info bar, user list,
- * alerts panel, @mention autocomplete, session save/restore.
+ * SplitManager — Manages split panels within tabs.
+ * Layout model: wrapper (column) > rows (horizontal) > splits
+ * All splits and rows are always equal size (flex: 1), no drag-to-resize.
+ * Dropping top/bottom creates a new full-width row.
  */
 class SplitManager {
   constructor() {
@@ -31,7 +32,7 @@ class SplitManager {
       wrapper = document.createElement('div');
       wrapper.className = 'tab-split-wrapper';
       wrapper.dataset.tabId = tabId;
-      wrapper.style.cssText = 'display:flex;flex:1;height:100%;';
+      wrapper.style.cssText = 'display:flex;flex-direction:column;flex:1;height:100%;';
       this.container.appendChild(wrapper);
       this.initTab(tabId);
     }
@@ -40,19 +41,29 @@ class SplitManager {
 
   // ── Split CRUD ──
 
-  addSplit(tabId) {
+  addSplit(tabId, targetRow) {
     const splitId = `split-${++this.splitIdCounter}`;
     const wrapper = this.container.querySelector(`[data-tab-id="${tabId}"]`);
     if (!wrapper) return null;
 
-    const existingSplits = this.tabSplits.get(tabId) || [];
-    if (existingSplits.length > 0) {
+    // Find or create a row to add the split to
+    let row = targetRow;
+    if (!row) {
+      row = wrapper.querySelector('.split-row:last-child');
+    }
+    if (!row) {
+      row = document.createElement('div');
+      row.className = 'split-row';
+      row.style.cssText = 'display:flex;flex:1;min-height:0;';
+      wrapper.appendChild(row);
+    }
+
+    // Add gutter if there are already splits in this row
+    const existingPanels = row.querySelectorAll(':scope > .split-panel');
+    if (existingPanels.length > 0) {
       const gutter = document.createElement('div');
       gutter.className = 'split-gutter';
-      gutter.dataset.splitLeft = existingSplits[existingSplits.length - 1];
-      gutter.dataset.splitRight = splitId;
-      this._setupGutterDrag(gutter);
-      wrapper.appendChild(gutter);
+      row.appendChild(gutter);
     }
 
     const panel = document.createElement('div');
@@ -91,7 +102,7 @@ class SplitManager {
       </div>
     `;
 
-    wrapper.appendChild(panel);
+    row.appendChild(panel);
 
     const splitData = {
       id: splitId,
@@ -105,7 +116,6 @@ class SplitManager {
       _userListOpen: false,
       _showLiveInfo: true,
       _isAlertsSplit: false,
-      _parentSplitId: null,
     };
 
     this.splits.set(splitId, splitData);
@@ -162,16 +172,18 @@ class SplitManager {
   }
 
   _equalizeSplits(tabId) {
+    const wrapper = this.container.querySelector(`[data-tab-id="${tabId}"]`);
+    if (!wrapper) return;
+    // All rows equal height
+    wrapper.querySelectorAll(':scope > .split-row').forEach((row) => {
+      row.style.flex = '1';
+    });
+    // All splits equal width within their rows
     const tabSplitList = this.tabSplits.get(tabId) || [];
     for (const sid of tabSplitList) {
       const s = this.splits.get(sid);
       if (s?.element) {
         s.element.style.flex = '1';
-        // If inside a column, also equalize the column
-        const col = s.element.parentElement;
-        if (col?.classList.contains('split-column')) {
-          col.style.flex = '1';
-        }
       }
     }
   }
@@ -192,25 +204,22 @@ class SplitManager {
 
     const wrapper = this.container.querySelector(`[data-tab-id="${tabId}"]`);
     const panel = wrapper.querySelector(`[data-split-id="${splitId}"]`);
-    const parentEl = panel.parentElement;
+    const row = panel.parentElement;
 
-    // Handle removal of horizontal gutters if inside a column
-    if (parentEl?.classList.contains('split-column')) {
-      const prevGutter = panel.previousElementSibling;
-      const nextGutter = panel.nextElementSibling;
-      if (prevGutter?.classList.contains('split-gutter-h')) prevGutter.remove();
-      else if (nextGutter?.classList.contains('split-gutter-h')) nextGutter.remove();
-      panel.remove();
-      this._cleanupColumns(wrapper);
-    } else {
-      const prevGutter = panel.previousElementSibling;
-      const nextGutter = panel.nextElementSibling;
-      if (prevGutter && prevGutter.classList.contains('split-gutter')) {
-        prevGutter.remove();
-      } else if (nextGutter && nextGutter.classList.contains('split-gutter')) {
-        nextGutter.remove();
-      }
-      panel.remove();
+    // Remove adjacent gutter within the row
+    const prevGutter = panel.previousElementSibling;
+    const nextGutter = panel.nextElementSibling;
+    if (prevGutter?.classList.contains('split-gutter')) prevGutter.remove();
+    else if (nextGutter?.classList.contains('split-gutter')) nextGutter.remove();
+    panel.remove();
+
+    // If the row is now empty, remove it and adjacent horizontal gutter
+    if (row.classList.contains('split-row') && row.querySelectorAll(':scope > .split-panel').length === 0) {
+      const prevH = row.previousElementSibling;
+      const nextH = row.nextElementSibling;
+      if (prevH?.classList.contains('split-gutter-h')) prevH.remove();
+      else if (nextH?.classList.contains('split-gutter-h')) nextH.remove();
+      row.remove();
     }
 
     this.splits.delete(splitId);
@@ -904,29 +913,24 @@ class SplitManager {
   serializeState() {
     const tabs = [];
     for (const tab of (window.tabManager?.tabs || [])) {
-      const splitIds = this.tabSplits.get(tab.id) || [];
-      const splits = splitIds
-        .filter((sid) => {
-          const s = this.splits.get(sid);
-          return s && !s._isAlertsSplit;
-        })
-        .map((sid) => {
-          const split = this.splits.get(sid);
-          return {
-            channel: split?.channel || null,
-            flex: '1',
-          };
+      const wrapper = this.container.querySelector(`[data-tab-id="${tab.id}"]`);
+      const rows = [];
+      if (wrapper) {
+        wrapper.querySelectorAll(':scope > .split-row').forEach((row) => {
+          const splits = [];
+          row.querySelectorAll(':scope > .split-panel').forEach((panel) => {
+            const sid = panel.dataset.splitId;
+            const split = this.splits.get(sid);
+            if (split && !split._isAlertsSplit) {
+              splits.push({ channel: split.channel || null });
+            }
+          });
+          if (splits.length > 0) rows.push({ splits });
         });
-      tabs.push({
-        tabId: tab.id,
-        tabName: tab.name,
-        splits,
-      });
+      }
+      tabs.push({ tabId: tab.id, tabName: tab.name, rows });
     }
-    return {
-      tabs,
-      activeTabId: window.tabManager?.activeTabId || null,
-    };
+    return { tabs, activeTabId: window.tabManager?.activeTabId || null };
   }
 
   async restoreState(state) {
@@ -936,6 +940,7 @@ class SplitManager {
       const tab = window.tabManager.addTab(tabData.tabName);
       const tabId = tab.id;
 
+      // Remove the default split created by addTab
       const defaultSplits = this.tabSplits.get(tabId) || [];
       for (const sid of [...defaultSplits]) {
         const panel = this.splits.get(sid)?.element;
@@ -948,13 +953,37 @@ class SplitManager {
       }
       this.tabSplits.set(tabId, []);
 
-      for (const splitData of tabData.splits) {
-        const newSplit = this.addSplit(tabId);
-        if (!newSplit) continue;
+      // Remove default empty rows
+      const wrapper = this.container.querySelector(`[data-tab-id="${tabId}"]`);
+      if (wrapper) {
+        wrapper.querySelectorAll('.split-row').forEach((r) => r.remove());
+      }
 
-        const channel = splitData.channel || splitData.videoId;
-        if (channel) {
-          await this.connectSplit(newSplit.id, channel);
+      // Support both old format (flat splits array) and new format (rows array)
+      const rowsData = tabData.rows || (tabData.splits ? [{ splits: tabData.splits }] : []);
+
+      for (const rowData of rowsData) {
+        // Create a new row
+        const row = document.createElement('div');
+        row.className = 'split-row';
+        row.style.cssText = 'display:flex;flex:1;min-height:0;';
+
+        // Add horizontal gutter between rows
+        if (wrapper.querySelectorAll(':scope > .split-row').length > 0) {
+          const hGutter = document.createElement('div');
+          hGutter.className = 'split-gutter-h';
+          wrapper.appendChild(hGutter);
+        }
+        wrapper.appendChild(row);
+
+        for (const splitData of rowData.splits) {
+          const newSplit = this.addSplit(tabId, row);
+          if (!newSplit) continue;
+
+          const channel = splitData.channel || splitData.videoId;
+          if (channel) {
+            await this.connectSplit(newSplit.id, channel);
+          }
         }
       }
     }
@@ -1124,145 +1153,103 @@ class SplitManager {
     const wrapper = this.container.querySelector(`[data-tab-id="${tabId}"]`);
     if (!wrapper) return;
 
-    const tabSplitList = this.tabSplits.get(tabId);
-    const dragIdx = tabSplitList.indexOf(draggedId);
-    const targetIdx = tabSplitList.indexOf(targetId);
-    if (dragIdx === -1 || targetIdx === -1) return;
+    const draggedSplit = this.splits.get(draggedId);
+    const targetSplit = this.splits.get(targetId);
+    if (!draggedSplit?.element || !targetSplit?.element) return;
 
-    if (position === 'top' || position === 'bottom') {
-      // Vertical stacking: wrap target in a column if not already, then add dragged split
-      const targetSplit = this.splits.get(targetId);
-      const draggedSplit = this.splits.get(draggedId);
-      if (!targetSplit?.element || !draggedSplit?.element) return;
+    const draggedPanel = draggedSplit.element;
+    const oldRow = draggedPanel.parentElement;
 
-      // Remove dragged from its current position in the tabSplitList
-      tabSplitList.splice(dragIdx, 1);
+    // Remove dragged panel from its current row (with adjacent gutter)
+    const prevGutter = draggedPanel.previousElementSibling;
+    const nextGutter = draggedPanel.nextElementSibling;
+    if (prevGutter?.classList.contains('split-gutter')) prevGutter.remove();
+    else if (nextGutter?.classList.contains('split-gutter')) nextGutter.remove();
+    draggedPanel.remove();
 
-      // Check if target is already inside a vertical column
-      let column = targetSplit.element.parentElement;
-      if (!column?.classList.contains('split-column')) {
-        // Create a new column container and wrap the target in it
-        column = document.createElement('div');
-        column.className = 'split-column';
-        column.style.cssText = 'display:flex;flex-direction:column;flex:1;min-width:0;';
-        targetSplit.element.parentElement.insertBefore(column, targetSplit.element);
-        column.appendChild(targetSplit.element);
-      }
-
-      // Add a horizontal gutter between stacked splits
-      const hGutter = document.createElement('div');
-      hGutter.className = 'split-gutter-h';
-      hGutter.style.cssText = 'height:var(--split-gutter, 4px);background:transparent;cursor:row-resize;flex-shrink:0;';
-
-      // Remove dragged element from old parent (may be another column or wrapper)
-      draggedSplit.element.remove();
-
-      // Insert above or below
-      if (position === 'top') {
-        column.insertBefore(draggedSplit.element, targetSplit.element);
-        column.insertBefore(hGutter, targetSplit.element);
-      } else {
-        const nextSibling = targetSplit.element.nextSibling;
-        if (nextSibling) {
-          column.insertBefore(hGutter, nextSibling);
-          column.insertBefore(draggedSplit.element, hGutter.nextSibling);
-        } else {
-          column.appendChild(hGutter);
-          column.appendChild(draggedSplit.element);
-        }
-      }
-
-      // Make stacked splits share height equally
-      column.querySelectorAll('.split-panel').forEach((p) => {
-        p.style.flex = '1';
-      });
-
-      // Clean up: if any column now has only 1 split, unwrap it
-      this._cleanupColumns(wrapper);
-
-      // Remove empty gutters between columns in the wrapper
-      this._rebuildGutters(wrapper, tabId);
-      this._equalizeSplits(tabId);
-      saveSession();
-    } else {
-      // Horizontal reorder (left/right) — original behavior
-      tabSplitList.splice(dragIdx, 1);
-
-      let insertIdx = tabSplitList.indexOf(targetId);
-      if (position === 'right') insertIdx++;
-      tabSplitList.splice(insertIdx, 0, draggedId);
-
-      // If dragged was in a column, extract it first
-      const draggedSplit = this.splits.get(draggedId);
-      if (draggedSplit?.element) {
-        const oldColumn = draggedSplit.element.parentElement;
-        if (oldColumn?.classList.contains('split-column')) {
-          draggedSplit.element.remove();
-          this._cleanupColumns(wrapper);
-        }
-      }
-
-      // Rebuild the DOM: remove all children, re-add in order
-      while (wrapper.firstChild) wrapper.firstChild.remove();
-
-      for (let i = 0; i < tabSplitList.length; i++) {
-        if (i > 0) {
-          const gutter = document.createElement('div');
-          gutter.className = 'split-gutter';
-          gutter.dataset.splitLeft = tabSplitList[i - 1];
-          gutter.dataset.splitRight = tabSplitList[i];
-          this._setupGutterDrag(gutter);
-          wrapper.appendChild(gutter);
-        }
-        const s = this.splits.get(tabSplitList[i]);
-        if (s?.element) wrapper.appendChild(s.element);
-      }
-
-      this._equalizeSplits(tabId);
-      saveSession();
+    // Clean up old row if it's now empty
+    if (oldRow?.classList.contains('split-row') && oldRow.querySelectorAll(':scope > .split-panel').length === 0) {
+      const prevH = oldRow.previousElementSibling;
+      const nextH = oldRow.nextElementSibling;
+      if (prevH?.classList.contains('split-gutter-h')) prevH.remove();
+      else if (nextH?.classList.contains('split-gutter-h')) nextH.remove();
+      oldRow.remove();
     }
-  }
 
-  _cleanupColumns(wrapper) {
-    // If a column has 0 or 1 split panels, unwrap it
-    wrapper.querySelectorAll('.split-column').forEach((col) => {
-      const panels = col.querySelectorAll(':scope > .split-panel');
-      // Remove horizontal gutters if only 1 panel left
-      if (panels.length <= 1) {
-        col.querySelectorAll('.split-gutter-h').forEach((g) => g.remove());
-        if (panels.length === 1) {
-          col.parentElement.insertBefore(panels[0], col);
-        }
-        col.remove();
-      } else {
-        // Clean up orphaned gutters (e.g., two gutters in a row, or gutter at start/end)
-        const children = Array.from(col.children);
-        for (let i = children.length - 1; i >= 0; i--) {
-          if (children[i].classList.contains('split-gutter-h')) {
-            const prev = children[i - 1];
-            const next = children[i + 1];
-            if (!prev || prev.classList.contains('split-gutter-h') ||
-                !next || next.classList.contains('split-gutter-h')) {
-              children[i].remove();
-            }
-          }
-        }
-      }
-    });
-  }
-
-  _rebuildGutters(wrapper, tabId) {
-    // Remove all vertical gutters from wrapper level and rebuild them
-    wrapper.querySelectorAll(':scope > .split-gutter').forEach((g) => g.remove());
-    const topLevelChildren = Array.from(wrapper.children).filter(
-      (c) => c.classList.contains('split-panel') || c.classList.contains('split-column')
-    );
-    // Re-insert gutters between them
-    for (let i = topLevelChildren.length - 1; i > 0; i--) {
+    if (position === 'left' || position === 'right') {
+      // Insert into target's row
+      const targetRow = targetSplit.element.parentElement;
       const gutter = document.createElement('div');
       gutter.className = 'split-gutter';
-      this._setupGutterDrag(gutter);
-      wrapper.insertBefore(gutter, topLevelChildren[i]);
+
+      if (position === 'left') {
+        targetRow.insertBefore(draggedPanel, targetSplit.element);
+        targetRow.insertBefore(gutter, targetSplit.element);
+      } else {
+        // Insert after target (skip past any gutter that follows target)
+        let insertPoint = targetSplit.element.nextElementSibling;
+        if (insertPoint?.classList.contains('split-gutter')) {
+          insertPoint = insertPoint.nextElementSibling;
+        }
+        if (insertPoint) {
+          targetRow.insertBefore(gutter, insertPoint);
+          targetRow.insertBefore(draggedPanel, gutter.nextSibling);
+        } else {
+          targetRow.appendChild(gutter);
+          targetRow.appendChild(draggedPanel);
+        }
+      }
+    } else {
+      // Top/bottom: create a new full-width row
+      const newRow = document.createElement('div');
+      newRow.className = 'split-row';
+      newRow.style.cssText = 'display:flex;flex:1;min-height:0;';
+      newRow.appendChild(draggedPanel);
+
+      const hGutter = document.createElement('div');
+      hGutter.className = 'split-gutter-h';
+
+      const targetRow = targetSplit.element.parentElement;
+
+      if (position === 'top') {
+        wrapper.insertBefore(newRow, targetRow);
+        wrapper.insertBefore(hGutter, targetRow);
+      } else {
+        // Insert after target row (skip past any horizontal gutter that follows)
+        let insertPoint = targetRow.nextElementSibling;
+        if (insertPoint?.classList.contains('split-gutter-h')) {
+          insertPoint = insertPoint.nextElementSibling;
+        }
+        if (insertPoint) {
+          wrapper.insertBefore(hGutter, insertPoint);
+          wrapper.insertBefore(newRow, hGutter.nextSibling);
+        } else {
+          wrapper.appendChild(hGutter);
+          wrapper.appendChild(newRow);
+        }
+      }
+    }
+
+    // Clean up any orphaned horizontal gutters at edges
+    this._cleanupGutters(wrapper);
+    this._equalizeSplits(tabId);
+    saveSession();
+  }
+
+  _cleanupGutters(wrapper) {
+    // Remove horizontal gutters at the start or end of the wrapper
+    const children = Array.from(wrapper.children);
+    if (children[0]?.classList.contains('split-gutter-h')) children[0].remove();
+    const last = wrapper.lastElementChild;
+    if (last?.classList.contains('split-gutter-h')) last.remove();
+
+    // Remove consecutive horizontal gutters
+    const updated = Array.from(wrapper.children);
+    for (let i = updated.length - 1; i > 0; i--) {
+      if (updated[i].classList.contains('split-gutter-h') &&
+          updated[i - 1].classList.contains('split-gutter-h')) {
+        updated[i].remove();
+      }
     }
   }
 
@@ -1292,59 +1279,5 @@ class SplitManager {
     const div = document.createElement('div');
     div.textContent = text || '';
     return div.innerHTML;
-  }
-
-  _setupGutterDrag(gutter) {
-    let startX = 0;
-    let leftPanel = null;
-    let rightPanel = null;
-    let leftStart = 0;
-    let rightStart = 0;
-    let totalWidth = 0;
-
-    const onMouseDown = (e) => {
-      e.preventDefault();
-      startX = e.clientX;
-      gutter.classList.add('active');
-
-      const leftId = gutter.dataset.splitLeft;
-      const rightId = gutter.dataset.splitRight;
-      leftPanel = gutter.parentElement.querySelector(`[data-split-id="${leftId}"]`);
-      rightPanel = gutter.parentElement.querySelector(`[data-split-id="${rightId}"]`);
-
-      if (!leftPanel || !rightPanel) return;
-
-      leftStart = leftPanel.offsetWidth;
-      rightStart = rightPanel.offsetWidth;
-      totalWidth = leftStart + rightStart;
-
-      document.addEventListener('mousemove', onMouseMove);
-      document.addEventListener('mouseup', onMouseUp);
-    };
-
-    const onMouseMove = (e) => {
-      const dx = e.clientX - startX;
-      const newLeft = Math.max(120, leftStart + dx);
-      const newRight = Math.max(120, totalWidth - newLeft);
-
-      leftPanel.style.flex = `0 0 ${newLeft}px`;
-      rightPanel.style.flex = `0 0 ${newRight}px`;
-    };
-
-    const onMouseUp = () => {
-      gutter.classList.remove('active');
-      if (leftPanel && rightPanel) {
-        const leftW = leftPanel.offsetWidth;
-        const rightW = rightPanel.offsetWidth;
-        const total = leftW + rightW;
-        leftPanel.style.flex = `${leftW / total}`;
-        rightPanel.style.flex = `${rightW / total}`;
-      }
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
-      saveSession();
-    };
-
-    gutter.addEventListener('mousedown', onMouseDown);
   }
 }

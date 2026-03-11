@@ -28,11 +28,14 @@
     },
     "files": [
       "src/**/*",
+      "assets/**/*",
       "package.json"
     ],
+    "icon": "assets/icon.png",
     "win": {
       "target": "nsis",
-      "artifactName": "Chatty-Setup.${ext}"
+      "artifactName": "Chatty-Setup.${ext}",
+      "icon": "assets/icon.ico"
     },
     "nsis": {
       "oneClick": false,

@@ -66,17 +66,6 @@ html, body {
   min-width: 0;
 }
 
-#titlebar-icon {
-  font-weight: 900;
-  font-size: 12px;
-  color: var(--text-primary);
-  background: var(--bg-tertiary);
-  padding: 2px 5px;
-  border-radius: 3px;
-  -webkit-app-region: no-drag;
-  flex-shrink: 0;
-}
-
 #titlebar-title {
   font-size: 12px;
   color: var(--text-secondary);
@@ -532,39 +521,26 @@ img.chat-badge {
   background: var(--bg-hover);
 }
 
-/* Split gutter / resize handle */
+/* Split gutter / divider */
 .split-gutter {
   width: var(--split-gutter);
-  background: transparent;
-  cursor: col-resize;
+  background: var(--border);
   flex-shrink: 0;
-  transition: background 0.15s;
-}
-
-.split-gutter:hover,
-.split-gutter.active {
-  background: var(--accent);
 }
 
 .split-gutter-h {
   height: var(--split-gutter);
-  cursor: row-resize;
+  background: var(--border);
   width: 100%;
-  background: transparent;
   flex-shrink: 0;
-  transition: background 0.15s;
 }
 
-.split-gutter-h:hover {
-  background: var(--accent);
-}
-
-/* Vertical column container for stacked splits */
-.split-column {
+/* Row container for horizontally arranged splits */
+.split-row {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   flex: 1;
-  min-width: 0;
+  min-height: 0;
 }
 
 /* ── Modals ── */

@@ -26,8 +26,7 @@ let authManager = null;
 let twitchAPI = null;
 let twitchChat = null;
 let eventSub = null;
-let profileCardWin = null;
-let profileCardUsername = null;
+const profileCards = new Map(); // username → BrowserWindow
 
 function createMainWindow() {
   const { width, height } = store.get('windowBounds');
@@ -38,6 +37,7 @@ function createMainWindow() {
     minWidth: 600,
     minHeight: 400,
     title: 'Chatty',
+    icon: path.join(__dirname, '..', '..', 'assets', 'icon.png'),
     backgroundColor: '#18181b',
     frame: false,
     webPreferences: {
@@ -387,14 +387,15 @@ ipcMain.handle('twitch:get-game', async (_event, gameId) => {
 // ── Profile Card Window ──
 
 ipcMain.on('open-profile-card', (_event, data) => {
-  // Close existing profile card
-  if (profileCardWin && !profileCardWin.isDestroyed()) {
-    profileCardWin.close();
+  const username = data.username;
+
+  // Close existing card for this user if already open
+  const existing = profileCards.get(username);
+  if (existing && !existing.isDestroyed()) {
+    existing.close();
   }
 
-  profileCardUsername = data.username;
-
-  profileCardWin = new BrowserWindow({
+  const win = new BrowserWindow({
     width: 340,
     height: 520,
     minWidth: 280,
@@ -414,15 +415,18 @@ ipcMain.on('open-profile-card', (_event, data) => {
     },
   });
 
-  profileCardWin.loadFile(path.join(__dirname, '..', 'renderer', 'profile-card.html'));
+  profileCards.set(username, win);
 
-  profileCardWin.webContents.once('did-finish-load', () => {
-    profileCardWin.webContents.send('profile-card:data', data);
+  win.loadFile(path.join(__dirname, '..', 'renderer', 'profile-card.html'));
+
+  win.webContents.once('did-finish-load', () => {
+    if (!win.isDestroyed()) {
+      win.webContents.send('profile-card:data', data);
+    }
   });
 
-  profileCardWin.on('closed', () => {
-    profileCardWin = null;
-    profileCardUsername = null;
+  win.on('closed', () => {
+    profileCards.delete(username);
   });
 });
 
@@ -432,8 +436,9 @@ ipcMain.on('profile-card:close', (event) => {
 });
 
 ipcMain.on('profile-card:send-message', (_event, username, msgData) => {
-  if (profileCardWin && !profileCardWin.isDestroyed() && profileCardUsername === username) {
-    profileCardWin.webContents.send('profile-card:message', msgData);
+  const win = profileCards.get(username);
+  if (win && !win.isDestroyed()) {
+    win.webContents.send('profile-card:message', msgData);
   }
 });
 
