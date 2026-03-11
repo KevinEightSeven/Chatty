@@ -96,9 +96,18 @@ class ModalManager {
     const fontSize = await window.chatty.getConfig('settings.fontSize') || 13;
     const timestampEnabled = await window.chatty.getConfig('settings.showTimestamps') ?? true;
     const maxMessages = await window.chatty.getConfig('settings.maxMessages') || 500;
+    const closeToTray = await window.chatty.getConfig('settings.closeToTray') ?? true;
     const logsPath = await window.chatty.getLogsPath();
 
     const html = `
+      <div class="account-section">
+        <h3>General</h3>
+        <div class="form-group" style="display:flex;align-items:center;gap:8px;">
+          <input type="checkbox" id="setting-close-to-tray" ${closeToTray ? 'checked' : ''} style="width:auto;">
+          <label for="setting-close-to-tray" style="margin:0;">Close to System Tray</label>
+        </div>
+        <p class="form-hint" style="margin-top:2px;">Keep Chatty running in the background when the window is closed.</p>
+      </div>
       <div class="account-section">
         <h3>Chat</h3>
         <div class="form-group">
@@ -143,10 +152,12 @@ class ModalManager {
       const newFontSize = parseInt(document.getElementById('setting-font-size').value) || 13;
       const newTimestamps = document.getElementById('setting-timestamps').checked;
       const newMaxMessages = parseInt(document.getElementById('setting-max-messages').value) || 500;
+      const newCloseToTray = document.getElementById('setting-close-to-tray').checked;
 
       await window.chatty.setConfig('settings.fontSize', newFontSize);
       await window.chatty.setConfig('settings.showTimestamps', newTimestamps);
       await window.chatty.setConfig('settings.maxMessages', newMaxMessages);
+      await window.chatty.setConfig('settings.closeToTray', newCloseToTray);
 
       // Apply font size live
       document.querySelectorAll('.split-chat').forEach((el) => {

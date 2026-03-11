@@ -11,7 +11,17 @@
   <!-- Custom titlebar -->
   <div id="titlebar">
     <div id="titlebar-drag">
-      <span id="titlebar-title">Chatty - v1.2.0</span>
+      <svg id="titlebar-icon" width="18" height="18" viewBox="0 0 256 256">
+        <defs>
+          <linearGradient id="icon-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" style="stop-color:#3a3a42"/>
+            <stop offset="100%" style="stop-color:#2a2a30"/>
+          </linearGradient>
+        </defs>
+        <rect x="8" y="8" width="240" height="240" rx="48" ry="48" fill="url(#icon-bg)"/>
+        <text x="128" y="158" font-family="Consolas, 'Courier New', monospace" font-weight="bold" font-size="120" fill="white" text-anchor="middle" letter-spacing="-4">&gt;_</text>
+      </svg>
+      <span id="titlebar-title">Chatty - v1.2.1</span>
     </div>
     <div id="titlebar-account">
       <img id="account-avatar" src="" alt="" style="display:none;">

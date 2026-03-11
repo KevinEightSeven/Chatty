@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, Tray, Menu, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { AuthManager } = require('../auth/auth-manager');
@@ -26,6 +26,7 @@ let authManager = null;
 let twitchAPI = null;
 let twitchChat = null;
 let eventSub = null;
+let tray = null;
 const profileCards = new Map(); // username → BrowserWindow
 
 function createMainWindow() {
@@ -54,6 +55,14 @@ function createMainWindow() {
     store.set('windowBounds', { width: w, height: h });
   });
 
+  mainWindow.on('close', (e) => {
+    const closeToTray = store.get('settings.closeToTray') ?? true;
+    if (closeToTray && tray) {
+      e.preventDefault();
+      mainWindow.hide();
+    }
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
@@ -61,6 +70,50 @@ function createMainWindow() {
   if (process.argv.includes('--dev')) {
     mainWindow.webContents.openDevTools();
   }
+}
+
+function createTray() {
+  if (tray) return;
+  const iconPath = path.join(__dirname, '..', '..', 'assets', 'icon.png');
+  const icon = nativeImage.createFromPath(iconPath).resize({ width: 22, height: 22 });
+  tray = new Tray(icon);
+  tray.setToolTip('Chatty');
+
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: 'Show Chatty',
+      click: () => {
+        if (mainWindow) {
+          mainWindow.show();
+          mainWindow.focus();
+        } else {
+          createMainWindow();
+        }
+      },
+    },
+    { type: 'separator' },
+    {
+      label: 'Quit',
+      click: () => {
+        if (tray) { tray.destroy(); tray = null; }
+        app.quit();
+      },
+    },
+  ]);
+
+  tray.setContextMenu(contextMenu);
+  tray.on('click', () => {
+    if (mainWindow) {
+      if (mainWindow.isVisible()) {
+        mainWindow.focus();
+      } else {
+        mainWindow.show();
+        mainWindow.focus();
+      }
+    } else {
+      createMainWindow();
+    }
+  });
 }
 
 // Helper: fetch and store user profile image
@@ -566,7 +619,18 @@ ipcMain.handle('updater:download', async () => {
 
 // Settings
 ipcMain.handle('store:get', async (_event, key) => store.get(key));
-ipcMain.handle('store:set', async (_event, key, value) => store.set(key, value));
+ipcMain.handle('store:set', async (_event, key, value) => {
+  store.set(key, value);
+  // Toggle tray when close-to-tray setting changes
+  if (key === 'settings.closeToTray') {
+    if (value) {
+      createTray();
+    } else if (tray) {
+      tray.destroy();
+      tray = null;
+    }
+  }
+});
 
 // Open external links
 ipcMain.on('open-external', (_event, url) => {
@@ -596,9 +660,16 @@ app.whenReady().then(async () => {
   }
 
   createMainWindow();
+
+  // Create tray — close-to-tray is on by default
+  if (store.get('settings.closeToTray') ?? true) {
+    createTray();
+  }
 });
 
 app.on('window-all-closed', () => {
+  // If tray exists, don't quit — app lives in tray
+  if (tray) return;
   if (twitchChat) twitchChat.disconnect();
   if (eventSub) eventSub.disconnect();
   app.quit();
