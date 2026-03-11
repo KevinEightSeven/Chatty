@@ -308,6 +308,37 @@ class TwitchAPI {
       return { error: err.message };
     }
   }
+
+  async warnUser(broadcasterId, moderatorId, userId, reason) {
+    try {
+      await this._post('/moderation/warnings', {
+        broadcaster_id: broadcasterId,
+        moderator_id: moderatorId,
+      }, { data: { user_id: userId, reason } });
+      return { success: true };
+    } catch (err) {
+      return { error: err.message };
+    }
+  }
+
+  async modifyChannelInfo(broadcasterId, data) {
+    try {
+      const url = new URL(`${BASE}/channels`);
+      url.searchParams.set('broadcaster_id', broadcasterId);
+      const res = await fetch(url, {
+        method: 'PATCH',
+        headers: { ...this._headers(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`${res.status}: ${text}`);
+      }
+      return { success: true };
+    } catch (err) {
+      return { error: err.message };
+    }
+  }
 }
 
 module.exports = { TwitchAPI };

@@ -272,12 +272,17 @@ html, body {
   flex: 1;
   display: flex;
   height: calc(100vh - 62px);
+  min-width: 0;
+  overflow: hidden;
 }
 
 #split-container {
   flex: 1;
   display: flex;
+  flex-direction: column;
   position: relative;
+  min-width: 0;
+  overflow: hidden;
 }
 
 /* ── Split Panels ── */
@@ -289,8 +294,8 @@ html, body {
   border-radius: 4px;
   margin: 2px;
   overflow: hidden;
-  min-width: 120px;
-  min-height: 100px;
+  min-width: 0;
+  min-height: 0;
   position: relative;
 }
 
@@ -327,9 +332,10 @@ html, body {
   text-decoration: underline;
 }
 
-/* Selected split highlight */
+/* Selected split highlight — bright blue glow */
 .split-panel.selected {
-  border-color: var(--accent);
+  border-color: #3b82f6;
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.5), inset 0 0 1px rgba(59, 130, 246, 0.2);
 }
 
 .split-panel.selected .split-header {
@@ -459,6 +465,8 @@ img.chat-badge {
   border-top: 1px solid var(--border);
   flex-shrink: 0;
   position: relative;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .split-input input {
@@ -554,6 +562,8 @@ img.chat-badge {
   flex-direction: row;
   flex: 1;
   min-height: 0;
+  min-width: 0;
+  overflow: hidden;
 }
 
 /* ── Modals ── */
@@ -1047,9 +1057,152 @@ img.chat-badge {
   background: var(--bg-hover);
 }
 
+/* ── Game Picker (for /setgame) ── */
+.game-picker {
+  position: absolute;
+  bottom: 44px;
+  left: 8px;
+  right: 8px;
+  max-height: 320px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.5);
+}
+
+.game-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.game-picker-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.game-picker-close:hover {
+  color: var(--text-primary);
+}
+
+.game-picker-search {
+  margin: 6px 8px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  padding: 6px 8px;
+  font-size: 12px;
+  outline: none;
+  flex-shrink: 0;
+}
+
+.game-picker-search:focus {
+  border-color: var(--accent);
+}
+
+.game-picker-results {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.game-picker-hint {
+  padding: 12px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.game-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.game-picker-item:hover {
+  background: var(--bg-hover);
+}
+
+.game-picker-art {
+  width: 30px;
+  height: 40px;
+  border-radius: 3px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.game-picker-name {
+  font-size: 12px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ── Drag and drop ── */
 .split-panel.dragging {
   opacity: 0.4;
+}
+
+/* 4-box direction picker overlay */
+.split-drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  pointer-events: auto;
+}
+
+.drop-zone {
+  position: absolute;
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 3px;
+  transition: background 0.1s, border-color 0.1s;
+  pointer-events: auto;
+  width: 32px;
+  height: 32px;
+  left: 50%;
+  top: 50%;
+}
+
+.drop-zone.active {
+  background: rgba(59, 130, 246, 0.3);
+  border-color: #3b82f6;
+}
+
+.drop-top {
+  transform: translate(-50%, -130%);
+}
+
+.drop-bottom {
+  transform: translate(-50%, 30%);
+}
+
+.drop-left {
+  transform: translate(-130%, -50%);
+}
+
+.drop-right {
+  transform: translate(30%, -50%);
 }
 
 /* ── Context Menu (Moderation) ── */

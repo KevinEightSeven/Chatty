@@ -22,6 +22,11 @@ Quickly find and join any Twitch channel by name, browse top live streams, or ex
 
 ![Add Chat](screenshots/add-chat.png)
 
+### All-In-One Streaming Setup
+Replace a dozen browser tabs and apps with one lightweight desktop client — chat, stream info, profile cards, and video all in a single window alongside your other tools.
+
+![All-In-One](screenshots/all-in-one.png)
+
 ---
 
 ## Features

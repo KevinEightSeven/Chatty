@@ -34,6 +34,10 @@ contextBridge.exposeInMainWorld('chatty', {
     ipcRenderer.invoke('twitch:delete-message', broadcasterId, moderatorId, messageId),
   banUser: (broadcasterId, moderatorId, userId, reason, duration) =>
     ipcRenderer.invoke('twitch:ban-user', broadcasterId, moderatorId, userId, reason, duration),
+  warnUser: (broadcasterId, moderatorId, userId, reason) =>
+    ipcRenderer.invoke('twitch:warn-user', broadcasterId, moderatorId, userId, reason),
+  modifyChannel: (broadcasterId, data) =>
+    ipcRenderer.invoke('twitch:modify-channel', broadcasterId, data),
 
   // IRC Chat
   joinChat: (channel) => ipcRenderer.invoke('chat:join', channel),

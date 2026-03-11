@@ -343,6 +343,17 @@ class SplitManager {
       if (!msg) return;
       sendBtn.disabled = true;
       inputEl.value = '';
+
+      // Handle slash commands
+      if (msg.startsWith('/')) {
+        const handled = await this._handleSlashCommand(msg, split, splitId);
+        if (handled) {
+          sendBtn.disabled = false;
+          inputEl.focus();
+          return;
+        }
+      }
+
       const res = await window.chatty.sendChat(ch, msg, split.broadcasterId);
       if (res.error) {
         split.chatView.addSystemMessage(`Failed to send: ${res.error}`);
@@ -438,6 +449,180 @@ class SplitManager {
       } else {
         liveInfoEl.style.display = 'none';
       }
+    }
+  }
+
+  // ── Slash commands ──
+
+  async _handleSlashCommand(msg, split, splitId) {
+    const parts = msg.split(/\s+/);
+    const cmd = parts[0].toLowerCase();
+    const status = await window.chatty.getAuthStatus();
+    const myUserId = status.user?.userId;
+
+    if (cmd === '/settitle') {
+      const title = parts.slice(1).join(' ');
+      if (!title) {
+        split.chatView.addSystemMessage('Usage: /settitle <new stream title>');
+        return true;
+      }
+      const res = await window.chatty.modifyChannel(split.broadcasterId, { title });
+      if (res.error) {
+        split.chatView.addSystemMessage(`Failed to set title: ${res.error}`);
+      } else {
+        split.chatView.addSystemMessage(`Title updated to: ${title}`);
+        this._updateStreamDetails(split);
+      }
+      return true;
+    }
+
+    if (cmd === '/setgame') {
+      const query = parts.slice(1).join(' ');
+      this._showGamePicker(split, splitId, query);
+      return true;
+    }
+
+    if (cmd === '/warn') {
+      const target = parts[1]?.replace('@', '');
+      const reason = parts.slice(2).join(' ') || 'Warned by moderator';
+      if (!target) {
+        split.chatView.addSystemMessage('Usage: /warn @username <reason>');
+        return true;
+      }
+      const user = await window.chatty.getUser(target);
+      if (!user || user.error) {
+        split.chatView.addSystemMessage(`User "${target}" not found.`);
+        return true;
+      }
+      const res = await window.chatty.warnUser(split.broadcasterId, myUserId, user.id, reason);
+      if (res.error) {
+        split.chatView.addSystemMessage(`Failed to warn ${target}: ${res.error}`);
+      } else {
+        split.chatView.addSystemMessage(`Warned ${target}: ${reason}`);
+      }
+      return true;
+    }
+
+    if (cmd === '/timeout') {
+      const target = parts[1]?.replace('@', '');
+      const duration = parseInt(parts[2]) || 600;
+      const reason = parts.slice(3).join(' ') || '';
+      if (!target) {
+        split.chatView.addSystemMessage('Usage: /timeout @username [seconds] [reason]');
+        return true;
+      }
+      const user = await window.chatty.getUser(target);
+      if (!user || user.error) {
+        split.chatView.addSystemMessage(`User "${target}" not found.`);
+        return true;
+      }
+      const res = await window.chatty.banUser(split.broadcasterId, myUserId, user.id, reason, duration);
+      if (res.error) {
+        split.chatView.addSystemMessage(`Failed to timeout ${target}: ${res.error}`);
+      } else {
+        split.chatView.addSystemMessage(`Timed out ${target} for ${duration}s${reason ? ': ' + reason : ''}`);
+      }
+      return true;
+    }
+
+    if (cmd === '/ban') {
+      const target = parts[1]?.replace('@', '');
+      const reason = parts.slice(2).join(' ') || '';
+      if (!target) {
+        split.chatView.addSystemMessage('Usage: /ban @username [reason]');
+        return true;
+      }
+      const user = await window.chatty.getUser(target);
+      if (!user || user.error) {
+        split.chatView.addSystemMessage(`User "${target}" not found.`);
+        return true;
+      }
+      const res = await window.chatty.banUser(split.broadcasterId, myUserId, user.id, reason, 0);
+      if (res.error) {
+        split.chatView.addSystemMessage(`Failed to ban ${target}: ${res.error}`);
+      } else {
+        split.chatView.addSystemMessage(`Banned ${target}${reason ? ': ' + reason : ''}`);
+      }
+      return true;
+    }
+
+    return false;
+  }
+
+  async _showGamePicker(split, splitId, query) {
+    // Remove any existing game picker
+    const existing = split.element.querySelector('.game-picker');
+    if (existing) existing.remove();
+
+    const picker = document.createElement('div');
+    picker.className = 'game-picker';
+    picker.innerHTML = `
+      <div class="game-picker-header">
+        <span>Select Category</span>
+        <button class="game-picker-close">&times;</button>
+      </div>
+      <input type="text" class="game-picker-search" placeholder="Search categories..." value="${this._escapeHtml(query || '')}">
+      <div class="game-picker-results"></div>
+    `;
+    split.element.appendChild(picker);
+
+    const searchInput = picker.querySelector('.game-picker-search');
+    const resultsEl = picker.querySelector('.game-picker-results');
+    const closeBtn = picker.querySelector('.game-picker-close');
+
+    closeBtn.addEventListener('click', () => picker.remove());
+
+    const doSearch = async (q) => {
+      if (!q) {
+        resultsEl.innerHTML = '<div class="game-picker-hint">Type to search categories...</div>';
+        // Show top games as default
+        const top = await window.chatty.getTopGames(15);
+        if (top.items?.length) {
+          this._renderGameResults(resultsEl, top.items, split, picker);
+        }
+        return;
+      }
+      resultsEl.innerHTML = '<div class="game-picker-hint">Searching...</div>';
+      const res = await window.chatty.searchCategories(q, 15);
+      if (res.items?.length) {
+        this._renderGameResults(resultsEl, res.items, split, picker);
+      } else {
+        resultsEl.innerHTML = '<div class="game-picker-hint">No categories found.</div>';
+      }
+    };
+
+    let searchTimeout = null;
+    searchInput.addEventListener('input', () => {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(() => doSearch(searchInput.value.trim()), 300);
+    });
+
+    searchInput.focus();
+    doSearch(query || '');
+  }
+
+  _renderGameResults(container, items, split, picker) {
+    container.innerHTML = '';
+    for (const game of items) {
+      const boxArt = (game.box_art_url || '')
+        .replace('{width}', '40').replace('{height}', '54');
+      const el = document.createElement('div');
+      el.className = 'game-picker-item';
+      el.innerHTML = `
+        ${boxArt ? `<img src="${boxArt}" class="game-picker-art">` : ''}
+        <span class="game-picker-name">${this._escapeHtml(game.name)}</span>
+      `;
+      el.addEventListener('click', async () => {
+        const res = await window.chatty.modifyChannel(split.broadcasterId, { game_id: game.id });
+        if (res.error) {
+          split.chatView.addSystemMessage(`Failed to set game: ${res.error}`);
+        } else {
+          split.chatView.addSystemMessage(`Category updated to: ${game.name}`);
+          this._updateStreamDetails(split);
+        }
+        picker.remove();
+      });
+      container.appendChild(el);
     }
   }
 
@@ -692,19 +877,20 @@ class SplitManager {
           }
         }
 
-        const vips = await window.chatty.getVIPs(split.broadcasterId, 100);
-        if (vips.items) {
-          for (const vip of vips.items) {
-            const u = split.chatView.users.get(vip.user_login);
-            if (u && !u.badges?.broadcaster && !u.badges?.moderator) {
-              u.badges = { ...u.badges, vip: true };
-            }
-          }
-        }
-
         const broadcaster = split.chatView.users.get(split.channel);
         if (broadcaster) {
           broadcaster.badges = { ...broadcaster.badges, broadcaster: true };
+        }
+
+        // Mark known bots
+        const knownBots = ['nightbot', 'streamelements', 'streamlabs', 'moobot', 'fossabot',
+          'wizebot', 'botisimo', 'soundalerts', 'pretzelrocks', 'sery_bot', 'pokemoncommunitygame',
+          'streamstickers', 'lolrankbot', 'buttsbot', 'own3d', 'ankhbot', 'deepbot', 'coebot',
+          'phantombot', 'stay_hydrated_bot', 'commanderroot', 'vivbot', 'supibot', 'okayeg'];
+        for (const [username, u] of split.chatView.users) {
+          if (knownBots.includes(username) && !u.badges?.broadcaster && !u.badges?.moderator) {
+            u.badges = { ...u.badges, bot: true };
+          }
         }
       }
     }
@@ -728,17 +914,17 @@ class SplitManager {
     // Categorize users
     const categories = {
       broadcaster: [],
+      editors: [],
       moderators: [],
-      vips: [],
-      subscribers: [],
+      bots: [],
       viewers: [],
     };
 
     for (const u of users) {
       if (u.badges?.broadcaster) categories.broadcaster.push(u);
+      else if (u.badges?.editor) categories.editors.push(u);
       else if (u.badges?.moderator) categories.moderators.push(u);
-      else if (u.badges?.vip) categories.vips.push(u);
-      else if (u.badges?.subscriber) categories.subscribers.push(u);
+      else if (u.badges?.bot) categories.bots.push(u);
       else categories.viewers.push(u);
     }
 
@@ -762,9 +948,9 @@ class SplitManager {
     };
 
     renderCategory('Broadcaster', categories.broadcaster);
+    renderCategory('Editors', categories.editors);
     renderCategory('Moderators', categories.moderators);
-    renderCategory('VIPs', categories.vips);
-    renderCategory('Subscribers', categories.subscribers);
+    renderCategory('Bots', categories.bots);
     renderCategory('Viewers', categories.viewers);
 
     entriesEl.innerHTML = html;
@@ -1025,7 +1211,7 @@ class SplitManager {
 
     header.addEventListener('mousedown', (e) => {
       // Don't drag from buttons
-      if (e.target.closest('button') || e.target.closest('.split-channel-name')) return;
+      if (e.target.closest('button')) return;
       const split = this.splits.get(splitId);
       if (!split) return;
       const tabSplitList = this.tabSplits.get(split.tabId) || [];
@@ -1072,17 +1258,23 @@ class SplitManager {
       position: null,
     };
 
-    // Add drop indicators to all OTHER panels in the same tab
+    // Add 4-box direction picker to all OTHER panels in the same tab
     const tabSplitList = this.tabSplits.get(split.tabId) || [];
     for (const sid of tabSplitList) {
       if (sid === splitId) continue;
       const s = this.splits.get(sid);
       if (!s?.element) continue;
       s.element.style.position = 'relative';
-      const indicator = document.createElement('div');
-      indicator.className = 'split-drop-indicator';
-      indicator.style.display = 'none';
-      s.element.appendChild(indicator);
+      const overlay = document.createElement('div');
+      overlay.className = 'split-drop-overlay';
+      overlay.innerHTML = `
+        <div class="drop-zone drop-top" data-dir="top"></div>
+        <div class="drop-zone drop-bottom" data-dir="bottom"></div>
+        <div class="drop-zone drop-left" data-dir="left"></div>
+        <div class="drop-zone drop-right" data-dir="right"></div>
+      `;
+      overlay.style.display = 'none';
+      s.element.appendChild(overlay);
     }
   }
 
@@ -1100,41 +1292,34 @@ class SplitManager {
       if (!s?.element) continue;
 
       const rect = s.element.getBoundingClientRect();
-      const indicator = s.element.querySelector('.split-drop-indicator');
-      if (!indicator) continue;
+      const overlay = s.element.querySelector('.split-drop-overlay');
+      if (!overlay) continue;
 
       if (e.clientX >= rect.left && e.clientX <= rect.right &&
           e.clientY >= rect.top && e.clientY <= rect.bottom) {
-        // Determine closest edge (left/right/top/bottom)
-        const relX = (e.clientX - rect.left) / rect.width;
-        const relY = (e.clientY - rect.top) / rect.height;
-        const distLeft = relX;
-        const distRight = 1 - relX;
-        const distTop = relY;
-        const distBottom = 1 - relY;
-        const minDist = Math.min(distLeft, distRight, distTop, distBottom);
+        overlay.style.display = '';
 
-        let pos, css;
-        const base = 'display:block;position:absolute;background:rgba(161,161,170,0.15);border:2px solid var(--accent);z-index:50;pointer-events:none;';
-        if (minDist === distLeft) {
-          pos = 'left';
-          css = base + 'top:0;bottom:0;left:0;width:50%;';
-        } else if (minDist === distRight) {
-          pos = 'right';
-          css = base + 'top:0;bottom:0;right:0;width:50%;';
-        } else if (minDist === distTop) {
-          pos = 'top';
-          css = base + 'top:0;left:0;right:0;height:50%;';
-        } else {
-          pos = 'bottom';
-          css = base + 'bottom:0;left:0;right:0;height:50%;';
+        // Determine which zone the cursor is over
+        const zones = overlay.querySelectorAll('.drop-zone');
+        let hoveredDir = null;
+        for (const zone of zones) {
+          const zr = zone.getBoundingClientRect();
+          if (e.clientX >= zr.left && e.clientX <= zr.right &&
+              e.clientY >= zr.top && e.clientY <= zr.bottom) {
+            hoveredDir = zone.dataset.dir;
+            zone.classList.add('active');
+          } else {
+            zone.classList.remove('active');
+          }
         }
 
-        foundTarget = sid;
-        foundPos = pos;
-        indicator.style.cssText = css;
+        if (hoveredDir) {
+          foundTarget = sid;
+          foundPos = hoveredDir;
+        }
       } else {
-        indicator.style.display = 'none';
+        overlay.style.display = 'none';
+        overlay.querySelectorAll('.drop-zone').forEach(z => z.classList.remove('active'));
       }
     }
 
@@ -1150,13 +1335,13 @@ class SplitManager {
     const panel = this.splits.get(splitId)?.element;
     if (panel) panel.classList.remove('dragging');
 
-    // Remove all drop indicators
+    // Remove all drop overlays
     const tabSplitList = this.tabSplits.get(tabId) || [];
     for (const sid of tabSplitList) {
       const s = this.splits.get(sid);
       if (!s?.element) continue;
-      const ind = s.element.querySelector('.split-drop-indicator');
-      if (ind) ind.remove();
+      const ov = s.element.querySelector('.split-drop-overlay');
+      if (ov) ov.remove();
     }
 
     // Perform the move

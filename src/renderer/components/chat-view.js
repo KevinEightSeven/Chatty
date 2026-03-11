@@ -91,9 +91,9 @@ class ChatView {
     return Array.from(this.users.values()).sort((a, b) => {
       const rank = (u) => {
         if (u.badges?.broadcaster) return 0;
-        if (u.badges?.moderator) return 1;
-        if (u.badges?.vip) return 2;
-        if (u.badges?.subscriber) return 3;
+        if (u.badges?.editor) return 1;
+        if (u.badges?.moderator) return 2;
+        if (u.badges?.bot) return 3;
         return 4;
       };
       const diff = rank(a) - rank(b);

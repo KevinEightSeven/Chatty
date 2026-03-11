@@ -222,6 +222,16 @@ ipcMain.handle('twitch:ban-user', async (_event, broadcasterId, moderatorId, use
   return twitchAPI.banUser(broadcasterId, moderatorId, userId, reason, duration);
 });
 
+ipcMain.handle('twitch:warn-user', async (_event, broadcasterId, moderatorId, userId, reason) => {
+  if (!twitchAPI) return { error: 'Not authenticated' };
+  return twitchAPI.warnUser(broadcasterId, moderatorId, userId, reason);
+});
+
+ipcMain.handle('twitch:modify-channel', async (_event, broadcasterId, data) => {
+  if (!twitchAPI) return { error: 'Not authenticated' };
+  return twitchAPI.modifyChannelInfo(broadcasterId, data);
+});
+
 // ── EventSub (Alerts) ──
 
 ipcMain.handle('eventsub:start', async () => {

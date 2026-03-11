@@ -21,9 +21,11 @@ const SCOPES = [
   'moderator:read:chatters',
   'moderator:manage:banned_users',
   'moderator:manage:chat_messages',
+  'moderator:manage:warnings',
   'moderation:read',
   'moderator:read:followers',
   'channel:read:subscriptions',
+  'channel:manage:broadcast',
   'bits:read',
 ].join(' ');
 
@@ -59,7 +61,7 @@ class AuthManager {
       redirect_uri: REDIRECT_URI,
       scope: SCOPES,
       state,
-      force_verify: 'false',
+      force_verify: 'true',
     });
 
     const authUrl = `${AUTH_URL}?${params}`;
