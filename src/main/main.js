@@ -6,6 +6,8 @@ const { TwitchAPI } = require('../api/twitch-api');
 const { TwitchChat } = require('../api/twitch-chat');
 const { TwitchEventSub } = require('../api/twitch-eventsub');
 const { checkForUpdates } = require('./auto-updater');
+const { OverlayServer } = require('./overlay-server');
+const { OverlayChatRenderer } = require('./overlay-chat-renderer');
 const Store = require('electron-store').default;
 
 const store = new Store({
@@ -17,9 +19,11 @@ const store = new Store({
   },
 });
 
-// Chat logs directory
-const logsDir = path.join(app.getPath('userData'), 'logs');
+// Chat logs directory — defaults to generic, switches to per-user on login
+let logsDir = path.join(app.getPath('userData'), 'logs');
 if (!fs.existsSync(logsDir)) fs.mkdirSync(logsDir, { recursive: true });
+
+let userDataDir = null; // Per-user data folder: {userData}/{username}/
 
 let mainWindow = null;
 let authManager = null;
@@ -27,7 +31,55 @@ let twitchAPI = null;
 let twitchChat = null;
 let eventSub = null;
 let tray = null;
+let overlayServer = null;
+let overlayChatRenderer = null;
 const profileCards = new Map(); // username → BrowserWindow
+
+// Set up per-user data folder — creates {userData}/{username}/ with logs and settings subfolders
+function setupUserDataFolder(username) {
+  if (!username) return;
+  const safe = username.toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+  userDataDir = path.join(app.getPath('userData'), safe);
+
+  const userLogsDir = path.join(userDataDir, 'logs');
+  const userSettingsDir = path.join(userDataDir, 'settings');
+  const userAssetsDir = path.join(userDataDir, 'overlay-assets');
+
+  for (const dir of [userDataDir, userLogsDir, userSettingsDir, userAssetsDir]) {
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  }
+
+  // Migrate existing logs from generic folder to user folder (one-time)
+  const genericLogsDir = path.join(app.getPath('userData'), 'logs');
+  if (fs.existsSync(genericLogsDir)) {
+    try {
+      const files = fs.readdirSync(genericLogsDir);
+      for (const file of files) {
+        const src = path.join(genericLogsDir, file);
+        const dest = path.join(userLogsDir, file);
+        if (!fs.existsSync(dest) && fs.statSync(src).isFile()) {
+          fs.copyFileSync(src, dest);
+        }
+      }
+    } catch {}
+  }
+
+  // Point logs to user-specific folder
+  logsDir = userLogsDir;
+
+  // Export a settings snapshot for portability
+  const settingsFile = path.join(userSettingsDir, 'config-snapshot.json');
+  try {
+    const snapshot = {
+      overlay: store.get('overlay'),
+      settings: store.get('settings'),
+      session: store.get('session'),
+      exportedAt: new Date().toISOString(),
+      username: username,
+    };
+    fs.writeFileSync(settingsFile, JSON.stringify(snapshot, null, 2));
+  } catch {}
+}
 
 function createMainWindow() {
   const { width, height } = store.get('windowBounds');
@@ -152,6 +204,11 @@ ipcMain.handle('auth:login', async () => {
 
     // Fetch profile image
     await fetchUserProfile();
+
+    // Set up per-user data folder
+    if (authManager.userInfo?.login) {
+      setupUserDataFolder(authManager.userInfo.login);
+    }
 
     // Connect IRC chat
     const userInfo = authManager.userInfo;
@@ -395,6 +452,7 @@ ipcMain.handle('eventsub:start', async () => {
         const subs = [
           { type: 'channel.follow', version: '2', condition: { broadcaster_user_id: userId, moderator_user_id: userId } },
           { type: 'channel.subscribe', version: '1', condition: { broadcaster_user_id: userId } },
+          { type: 'channel.subscription.message', version: '1', condition: { broadcaster_user_id: userId } },
           { type: 'channel.cheer', version: '1', condition: { broadcaster_user_id: userId } },
           { type: 'channel.raid', version: '1', condition: { to_broadcaster_user_id: userId } },
         ];
@@ -406,6 +464,35 @@ ipcMain.handle('eventsub:start', async () => {
         resolve({ success: true });
       } else {
         mainWindow?.webContents.send('eventsub:event', evt);
+
+        // Forward to overlay server for OBS alerts
+        if (overlayServer?.isRunning() && evt.event) {
+          const e = evt.event;
+          const alertData = { eventType: evt.type };
+          if (evt.type === 'channel.follow') {
+            alertData.user = e.user_name || e.user_login || 'Someone';
+          } else if (evt.type === 'channel.subscribe') {
+            alertData.user = e.user_name || e.user_login || 'Someone';
+            alertData.tier = e.tier || '1';
+            alertData.message = e.message || '';
+            alertData.is_gift = e.is_gift || false;
+            alertData.months = 1;
+          } else if (evt.type === 'channel.subscription.message') {
+            alertData.user = e.user_name || e.user_login || 'Someone';
+            alertData.tier = e.tier || '1';
+            alertData.message = (e.message && e.message.text) || '';
+            alertData.months = e.cumulative_months || 1;
+            alertData.is_gift = false;
+          } else if (evt.type === 'channel.cheer') {
+            alertData.user = e.user_name || e.user_login || 'Anonymous';
+            alertData.amount = e.bits || 0;
+            alertData.message = e.message || '';
+          } else if (evt.type === 'channel.raid') {
+            alertData.user = e.from_broadcaster_user_name || e.from_broadcaster_user_login || 'Someone';
+            alertData.viewers = e.viewers || 0;
+          }
+          overlayServer.pushAlert(alertData);
+        }
       }
     };
 
@@ -450,6 +537,10 @@ ipcMain.on('chat:log', (_event, channel, line) => {
 
 ipcMain.handle('chat:get-logs-path', async () => {
   return logsDir;
+});
+
+ipcMain.handle('chat:get-user-data-path', async () => {
+  return userDataDir || app.getPath('userData');
 });
 
 ipcMain.handle('chat:get-user-logs', async (_event, channel, displayName) => {
@@ -521,6 +612,47 @@ ipcMain.on('chat:listen', (_event, channel) => {
   const ch = channel.toLowerCase().replace('#', '');
   twitchChat.onChannel(ch, (parsed) => {
     mainWindow?.webContents.send(`chat:message:${ch}`, parsed);
+
+    // Forward PRIVMSG to overlay server for chat overlay
+    if (overlayServer?.isRunning() && parsed.command === 'PRIVMSG') {
+      const tags = parsed.tags || {};
+      const badgeStr = tags.badges || '';
+      const userId = tags['user-id'] || '';
+
+      // Lazily initialize the chat renderer
+      if (!overlayChatRenderer && twitchAPI) {
+        overlayChatRenderer = new OverlayChatRenderer(twitchAPI);
+        overlayChatRenderer.loadGlobalBadges();
+        overlayChatRenderer.loadThirdPartyGlobal();
+      }
+
+      // Load channel-specific data if needed
+      if (overlayChatRenderer && userId) {
+        const channelUser = tags['room-id'] || '';
+        if (channelUser) {
+          overlayChatRenderer.loadChannelBadges(channelUser);
+          overlayChatRenderer.loadThirdPartyChannel(channelUser);
+        }
+      }
+
+      const channelId = tags['room-id'] || '';
+      const badges = overlayChatRenderer
+        ? overlayChatRenderer.resolveBadges(badgeStr, channelId)
+        : [];
+      const html = overlayChatRenderer
+        ? overlayChatRenderer.renderMessage(parsed.message || '', tags.emotes || '', channelId)
+        : '';
+
+      overlayServer.pushChat({
+        username: parsed.username || '',
+        displayName: tags['display-name'] || parsed.username || '',
+        color: tags.color || '',
+        message: parsed.message || '',
+        html,
+        badges,
+        channel: ch,
+      });
+    }
   });
 });
 
@@ -617,6 +749,65 @@ ipcMain.handle('updater:download', async () => {
   });
 });
 
+// ── Overlay Server ──
+
+ipcMain.handle('overlay:start', async (_event, port) => {
+  if (!overlayServer) {
+    overlayServer = new OverlayServer(store, userDataDir || app.getPath('userData'));
+  }
+  overlayServer.start(port);
+  return { success: true, port: overlayServer.getPort() };
+});
+
+ipcMain.handle('overlay:stop', async () => {
+  if (overlayServer) {
+    overlayServer.stop();
+  }
+  return { success: true };
+});
+
+ipcMain.handle('overlay:is-running', async () => {
+  return overlayServer?.isRunning() || false;
+});
+
+ipcMain.handle('overlay:test-alert', async (_event, alertType, overrides) => {
+  if (overlayServer?.isRunning()) {
+    overlayServer.pushConfigReload();
+    overlayServer.pushTestAlert(alertType, overrides);
+    return { success: true };
+  }
+  return { error: 'Overlay server not running' };
+});
+
+ipcMain.handle('overlay:reload-config', async () => {
+  if (overlayServer?.isRunning()) {
+    overlayServer.pushConfigReload();
+  }
+});
+
+ipcMain.handle('overlay:upload-asset', async (_event, filterType) => {
+  const { dialog } = require('electron');
+  const filters = filterType === 'sound'
+    ? [{ name: 'Audio', extensions: ['mp3', 'ogg', 'wav'] }]
+    : [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'] }];
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openFile'],
+    filters,
+  });
+
+  if (result.canceled || !result.filePaths.length) return null;
+
+  const filePath = result.filePaths[0];
+  const filename = path.basename(filePath);
+  const buffer = fs.readFileSync(filePath);
+
+  if (!overlayServer) {
+    overlayServer = new OverlayServer(store, userDataDir || app.getPath('userData'));
+  }
+  const savedName = overlayServer.saveAsset(filename, buffer);
+  return { filename: savedName };
+});
+
 // Settings
 ipcMain.handle('store:get', async (_event, key) => store.get(key));
 ipcMain.handle('store:set', async (_event, key, value) => {
@@ -649,6 +840,11 @@ app.whenReady().then(async () => {
     // Fetch/update profile image
     await fetchUserProfile();
 
+    // Set up per-user data folder
+    if (authManager.userInfo?.login) {
+      setupUserDataFolder(authManager.userInfo.login);
+    }
+
     const userInfo = authManager.userInfo;
     if (userInfo) {
       twitchChat = new TwitchChat();
@@ -665,6 +861,15 @@ app.whenReady().then(async () => {
   if (store.get('settings.closeToTray') ?? true) {
     createTray();
   }
+
+  // Auto-start overlay server if enabled
+  if (store.get('settings.autoStartOverlay')) {
+    const port = store.get('overlay.port') || 7878;
+    if (!overlayServer) {
+      overlayServer = new OverlayServer(store, userDataDir || app.getPath('userData'));
+    }
+    overlayServer.start(port);
+  }
 });
 
 app.on('window-all-closed', () => {
@@ -672,6 +877,7 @@ app.on('window-all-closed', () => {
   if (tray) return;
   if (twitchChat) twitchChat.disconnect();
   if (eventSub) eventSub.disconnect();
+  if (overlayServer) overlayServer.stop();
   app.quit();
 });
 

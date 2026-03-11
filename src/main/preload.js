@@ -118,6 +118,7 @@ contextBridge.exposeInMainWorld('chatty', {
   // Chat Logging
   logChat: (channel, line) => ipcRenderer.send('chat:log', channel, line),
   getLogsPath: () => ipcRenderer.invoke('chat:get-logs-path'),
+  getUserDataPath: () => ipcRenderer.invoke('chat:get-user-data-path'),
   getUserLogs: (channel, displayName) => ipcRenderer.invoke('chat:get-user-logs', channel, displayName),
 
   // Settings
@@ -132,6 +133,14 @@ contextBridge.exposeInMainWorld('chatty', {
     ipcRenderer.on('updater:progress', handler);
     return () => ipcRenderer.removeListener('updater:progress', handler);
   },
+
+  // Overlay Server (Streamer Tools)
+  overlayStart: (port) => ipcRenderer.invoke('overlay:start', port),
+  overlayStop: () => ipcRenderer.invoke('overlay:stop'),
+  overlayIsRunning: () => ipcRenderer.invoke('overlay:is-running'),
+  overlayTestAlert: (type, overrides) => ipcRenderer.invoke('overlay:test-alert', type, overrides),
+  overlayUploadAsset: (filterType) => ipcRenderer.invoke('overlay:upload-asset', filterType),
+  overlayReloadConfig: () => ipcRenderer.invoke('overlay:reload-config'),
 
   // External links
   openExternal: (url) => ipcRenderer.send('open-external', url),

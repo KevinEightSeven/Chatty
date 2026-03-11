@@ -6,6 +6,7 @@ let tabManager;
 let splitManager;
 let modalManager;
 let searchDialog;
+let streamerTools;
 
 let saveTimeout = null;
 
@@ -25,11 +26,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   splitManager = new SplitManager();
   modalManager = new ModalManager();
   searchDialog = new SearchDialog();
+  streamerTools = new StreamerTools();
 
   window.tabManager = tabManager;
   window.splitManager = splitManager;
   window.modalManager = modalManager;
   window.searchDialog = searchDialog;
+  window.streamerTools = streamerTools;
 
   document.getElementById('btn-minimize').addEventListener('click', () => window.chatty.minimize());
   document.getElementById('btn-maximize').addEventListener('click', () => window.chatty.maximize());
@@ -41,6 +44,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   document.getElementById('btn-alerts').addEventListener('click', () => {
     splitManager.toggleAlertsSplit();
+  });
+
+  document.getElementById('btn-streamer-tools').addEventListener('click', () => {
+    streamerTools.open();
   });
 
   document.getElementById('btn-settings').addEventListener('click', () => {
@@ -120,6 +127,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (e.key === 'Escape') {
       modalManager.close();
       searchDialog.close();
+      streamerTools.close();
     }
   });
 

@@ -98,6 +98,9 @@ class ModalManager {
     const maxMessages = await window.chatty.getConfig('settings.maxMessages') || 500;
     const closeToTray = await window.chatty.getConfig('settings.closeToTray') ?? true;
     const logsPath = await window.chatty.getLogsPath();
+    const userDataPath = await window.chatty.getUserDataPath();
+
+    const autoStartOverlay = await window.chatty.getConfig('settings.autoStartOverlay') ?? false;
 
     const html = `
       <div class="account-section">
@@ -107,6 +110,11 @@ class ModalManager {
           <label for="setting-close-to-tray" style="margin:0;">Close to System Tray</label>
         </div>
         <p class="form-hint" style="margin-top:2px;">Keep Chatty running in the background when the window is closed.</p>
+        <div class="form-group" style="display:flex;align-items:center;gap:8px;margin-top:8px;">
+          <input type="checkbox" id="setting-auto-start-overlay" ${autoStartOverlay ? 'checked' : ''} style="width:auto;">
+          <label for="setting-auto-start-overlay" style="margin:0;">Auto-start Streamer Tools Server</label>
+        </div>
+        <p class="form-hint" style="margin-top:2px;">Automatically start the overlay server when Chatty launches.</p>
       </div>
       <div class="account-section">
         <h3>Chat</h3>
@@ -122,6 +130,12 @@ class ModalManager {
           <label>Max Messages Per Channel</label>
           <input type="number" id="setting-max-messages" value="${maxMessages}" min="100" max="5000" step="100" style="width:100px;font-family:var(--font-sans);">
         </div>
+      </div>
+      <div class="account-section">
+        <h3>Data Folder</h3>
+        <p class="form-hint">Your settings, logs, and overlay assets are saved to:</p>
+        <div style="background:var(--bg-tertiary);padding:8px;border-radius:4px;font-family:var(--font-mono);font-size:11px;color:var(--text-secondary);margin-top:4px;word-break:break-all;cursor:pointer;" id="settings-data-path" title="Click to open">${this._escapeHtml(userDataPath)}</div>
+        <p class="form-hint" style="margin-top:6px;">Copy this folder to transfer all your settings to another computer.</p>
       </div>
       <div class="account-section">
         <h3>Chat Logs</h3>
@@ -144,6 +158,10 @@ class ModalManager {
       });
     });
 
+    document.getElementById('settings-data-path')?.addEventListener('click', () => {
+      window.chatty.openExternal(userDataPath);
+    });
+
     document.getElementById('settings-logs-path')?.addEventListener('click', () => {
       window.chatty.openExternal(logsPath);
     });
@@ -153,11 +171,13 @@ class ModalManager {
       const newTimestamps = document.getElementById('setting-timestamps').checked;
       const newMaxMessages = parseInt(document.getElementById('setting-max-messages').value) || 500;
       const newCloseToTray = document.getElementById('setting-close-to-tray').checked;
+      const newAutoStartOverlay = document.getElementById('setting-auto-start-overlay').checked;
 
       await window.chatty.setConfig('settings.fontSize', newFontSize);
       await window.chatty.setConfig('settings.showTimestamps', newTimestamps);
       await window.chatty.setConfig('settings.maxMessages', newMaxMessages);
       await window.chatty.setConfig('settings.closeToTray', newCloseToTray);
+      await window.chatty.setConfig('settings.autoStartOverlay', newAutoStartOverlay);
 
       // Apply font size live
       document.querySelectorAll('.split-chat').forEach((el) => {

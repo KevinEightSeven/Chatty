@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Chatty Alerts Overlay</title>
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+
+  #alert-container {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  .alert-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    opacity: 0;
+    transform: scale(0.8);
+    transition: none;
+    position: relative;
+  }
+
+  .alert-text-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .alert-image {
+    max-width: 300px;
+    max-height: 300px;
+    margin-bottom: 16px;
+  }
+
+  .alert-text {
+    font-weight: 700;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.8), 0 0 10px rgba(0,0,0,0.5);
+    line-height: 1.3;
+    word-wrap: break-word;
+    max-width: 600px;
+  }
+
+  .alert-sub-text {
+    font-size: 0.6em;
+    font-weight: 400;
+    margin-top: 8px;
+    opacity: 0.85;
+    text-shadow: 1px 1px 3px rgba(0,0,0,0.8);
+  }
+
+  /* Layout: below (default) — image on top, text below */
+  .alert-layout-below { flex-direction: column; align-items: center; }
+  .alert-layout-below .alert-image { margin-bottom: 16px; }
+
+  /* Layout: overlay — text centered over image */
+  .alert-layout-overlay { position: relative; }
+  .alert-layout-overlay .alert-image { margin-bottom: 0; }
+  .alert-layout-overlay .alert-text-wrap {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Layout: side — image left, text right */
+  .alert-layout-side {
+    flex-direction: row;
+    align-items: center;
+    text-align: left;
+    gap: 20px;
+  }
+  .alert-layout-side .alert-image { margin-bottom: 0; flex-shrink: 0; }
+  .alert-layout-side .alert-text-wrap { align-items: flex-start; }
+
+  /* Animations */
+  @keyframes fadeIn {
+    from { opacity: 0; transform: scale(0.8); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  @keyframes fadeOut {
+    from { opacity: 1; transform: scale(1); }
+    to { opacity: 0; transform: scale(0.8); }
+  }
+  @keyframes slideDown {
+    from { opacity: 0; transform: translateY(-60px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(60px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes bounceIn {
+    0% { opacity: 0; transform: scale(0.3); }
+    50% { opacity: 1; transform: scale(1.08); }
+    70% { transform: scale(0.95); }
+    100% { opacity: 1; transform: scale(1); }
+  }
+  @keyframes zoomIn {
+    from { opacity: 0; transform: scale(0); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  .anim-fadeIn { animation: fadeIn 0.5s ease forwards; }
+  .anim-slideDown { animation: slideDown 0.5s ease forwards; }
+  .anim-slideUp { animation: slideUp 0.5s ease forwards; }
+  .anim-bounceIn { animation: bounceIn 0.6s ease forwards; }
+  .anim-zoomIn { animation: zoomIn 0.4s ease forwards; }
+  .anim-fadeOut { animation: fadeOut 0.4s ease forwards; }
+</style>
+</head>
+<body>
+<div id="alert-container"></div>
+<style id="custom-css"></style>
+
+<script>
+(function() {
+  const container = document.getElementById('alert-container');
+  const customCssEl = document.getElementById('custom-css');
+  let config = null;
+  let configReady = null; // resolves when config is loaded
+  let alertQueue = [];
+  let isShowing = false;
+  let ws = null;
+
+  // Web Audio API for reliable playback (no autoplay restrictions)
+  let audioCtx = null;
+  const soundCache = {}; // filename -> AudioBuffer
+
+  function getAudioContext() {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+    return audioCtx;
+  }
+
+  async function fetchAndDecodeSound(filename) {
+    const url = filename.startsWith('http') ? filename : '/assets/' + filename;
+    const res = await fetch(url);
+    const arrayBuf = await res.arrayBuffer();
+    const ctx = getAudioContext();
+    return await ctx.decodeAudioData(arrayBuf);
+  }
+
+  async function playSound(filename) {
+    if (!filename) return;
+    try {
+      // Get from cache or fetch+decode on the spot
+      if (!soundCache[filename]) {
+        soundCache[filename] = await fetchAndDecodeSound(filename);
+      }
+      const buffer = soundCache[filename];
+      const ctx = getAudioContext();
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(ctx.destination);
+      source.start(0);
+    } catch (e) {
+      console.warn('Sound playback failed:', filename, e);
+    }
+  }
+
+  async function loadConfig() {
+    let resolve;
+    configReady = new Promise(r => { resolve = r; });
+    try {
+      const alertPath = location.pathname.replace(/^\//, '');
+      const configUrl = '/config/' + (alertPath || 'alerts');
+      const res = await fetch(configUrl);
+      config = await res.json();
+      applyPosition();
+      applyGlobalCss();
+      // Pre-fetch sounds into cache (best-effort, playSound will also fetch if missed)
+      for (const type of ['follow', 'subscribe', 'cheer', 'raid']) {
+        if (config[type]) {
+          if (config[type].sound && !soundCache[config[type].sound]) {
+            fetchAndDecodeSound(config[type].sound)
+              .then(buf => { soundCache[config[type].sound] = buf; })
+              .catch(() => {});
+          }
+          // Also preload variant sounds
+          if (config[type].variants) {
+            for (const v of config[type].variants) {
+              if (v.sound && !soundCache[v.sound]) {
+                fetchAndDecodeSound(v.sound)
+                  .then(buf => { soundCache[v.sound] = buf; })
+                  .catch(() => {});
+              }
+            }
+          }
+        }
+      }
+      resolve();
+    } catch (e) {
+      console.error('Failed to load alert config:', e);
+      config = {
+        follow: { enabled: true, image: '', sound: '', text: '{user} just followed!', duration: 8, animation: 'fadeIn', fontSize: 32, fontColor: '#ffffff', css: '' },
+        subscribe: { enabled: true, image: '', sound: '', text: '{user} just subscribed!', duration: 8, animation: 'fadeIn', fontSize: 32, fontColor: '#ffffff', css: '' },
+        cheer: { enabled: true, image: '', sound: '', text: '{user} cheered {amount} bits!', duration: 8, animation: 'fadeIn', fontSize: 32, fontColor: '#ffffff', css: '' },
+        raid: { enabled: true, image: '', sound: '', text: '{user} is raiding with {viewers} viewers!', duration: 8, animation: 'fadeIn', fontSize: 32, fontColor: '#ffffff', css: '' },
+        position: { x: 50, y: 20 },
+        globalCss: '',
+      };
+      applyPosition();
+      resolve();
+    }
+  }
+
+  function applyPosition() {
+    if (!config || !config.position) return;
+    container.style.left = config.position.x + '%';
+    container.style.top = config.position.y + '%';
+    container.style.transform = 'translate(-50%, -50%)';
+    if (config.position.width) container.style.width = config.position.width + '%';
+    if (config.position.height) container.style.height = config.position.height + '%';
+  }
+
+  function applyGlobalCss() {
+    if (!config) return;
+    let css = config.globalCss || '';
+    for (const type of ['follow', 'subscribe', 'cheer', 'raid']) {
+      if (config[type] && config[type].css) {
+        css += '\n' + config[type].css;
+      }
+    }
+    customCssEl.textContent = css;
+  }
+
+  function connectWS() {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    ws = new WebSocket(proto + '//' + location.host);
+
+    ws.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'alert') {
+          queueAlert(msg.data);
+        } else if (msg.type === 'config-reload') {
+          loadConfig();
+        }
+      } catch {}
+    };
+
+    ws.onclose = () => {
+      setTimeout(connectWS, 3000);
+    };
+
+    ws.onerror = () => {};
+  }
+
+  function queueAlert(data) {
+    alertQueue.push(data);
+    if (!isShowing) showNext();
+  }
+
+  function showNext() {
+    if (alertQueue.length === 0) {
+      isShowing = false;
+      return;
+    }
+
+    isShowing = true;
+    const delayMs = ((config && config.delay) || 0) * 1000;
+
+    if (delayMs > 0) {
+      setTimeout(() => {
+        const data = alertQueue.shift();
+        showAlert(data);
+      }, delayMs);
+    } else {
+      const data = alertQueue.shift();
+      showAlert(data);
+    }
+  }
+
+  // Resolve which variant (if any) should override the base alert config
+  function resolveVariant(baseConfig, data, configKey) {
+    if (!baseConfig.variants || baseConfig.variants.length === 0) return baseConfig;
+
+    let matched = null;
+
+    if (configKey === 'subscribe') {
+      // Check gifted sub first, then resub
+      if (data.is_gift) {
+        matched = baseConfig.variants.find(v => v.condition === 'gifted');
+      } else if (data.months && data.months > 1) {
+        matched = baseConfig.variants.find(v => v.condition === 'resub');
+      }
+    } else if (configKey === 'cheer') {
+      // Highest threshold the bit amount meets
+      const sorted = [...baseConfig.variants].sort((a, b) => (b.threshold || 0) - (a.threshold || 0));
+      matched = sorted.find(v => (data.amount || 0) >= (v.threshold || 0));
+    } else if (configKey === 'raid') {
+      // Highest threshold the viewer count meets
+      const sorted = [...baseConfig.variants].sort((a, b) => (b.threshold || 0) - (a.threshold || 0));
+      matched = sorted.find(v => (data.viewers || 0) >= (v.threshold || 0));
+    }
+
+    if (!matched) return baseConfig;
+
+    // Merge: variant non-empty fields override base
+    const merged = { ...baseConfig };
+    for (const key of ['image', 'sound', 'text', 'animation', 'css', 'html', 'js', 'layout']) {
+      if (matched[key]) merged[key] = matched[key];
+    }
+    // Numeric fields: only override if explicitly set (> 0)
+    if (matched.duration > 0) merged.duration = matched.duration;
+    if (matched.fontSize > 0) merged.fontSize = matched.fontSize;
+    if (matched.fontColor) merged.fontColor = matched.fontColor;
+    return merged;
+  }
+
+  function replaceVars(str, data) {
+    if (!str) return str;
+    return str
+      .replace(/\{user\}/g, escapeHtml(data.user || 'Someone'))
+      .replace(/\{amount\}/g, escapeHtml(String(data.amount || data.bits || '0')))
+      .replace(/\{viewers\}/g, escapeHtml(String(data.viewers || '0')))
+      .replace(/\{tier\}/g, escapeHtml(String(data.tier || '1')))
+      .replace(/\{months\}/g, escapeHtml(String(data.months || '0')))
+      .replace(/\{message\}/g, escapeHtml(data.message || ''));
+  }
+
+  async function showAlert(data) {
+    if (configReady) await configReady;
+    if (!config) return;
+
+    // Map EventSub types to config keys
+    const typeMap = {
+      'follow': 'follow',
+      'channel.follow': 'follow',
+      'subscribe': 'subscribe',
+      'channel.subscribe': 'subscribe',
+      'channel.subscription.message': 'subscribe',
+      'resub': 'subscribe',
+      'cheer': 'cheer',
+      'channel.cheer': 'cheer',
+      'raid': 'raid',
+      'channel.raid': 'raid',
+    };
+
+    const eventType = data.eventType || data.type || 'follow';
+    const configKey = typeMap[eventType] || 'follow';
+    const baseConfig = config[configKey];
+
+    if (!baseConfig || !baseConfig.enabled) {
+      showNext();
+      return;
+    }
+
+    // Check for matching variant
+    const alertConfig = resolveVariant(baseConfig, data, configKey);
+
+    // Play sound via Web Audio API (async, self-contained)
+    if (alertConfig.sound) {
+      playSound(alertConfig.sound);
+    }
+
+    const duration = (alertConfig.duration || 8) * 1000;
+
+    // ── Custom HTML mode ──
+    if (alertConfig.html) {
+      container.innerHTML = '';
+      // Full-width so the template's own margin:auto centering works
+      container.style.width = '100%';
+      container.style.left = '0';
+      container.style.transform = 'none';
+
+      // Inject scoped CSS
+      const styleEl = document.createElement('style');
+      styleEl.textContent = alertConfig.css || '';
+      container.appendChild(styleEl);
+
+      // Create wrapper and inject processed HTML
+      const wrapper = document.createElement('div');
+      wrapper.className = 'alert-custom-wrapper';
+      wrapper.innerHTML = replaceVars(alertConfig.html, data);
+      container.appendChild(wrapper);
+
+      // Execute custom JS if provided
+      if (alertConfig.js) {
+        try {
+          const fn = new Function('container', 'data', alertConfig.js);
+          fn(wrapper, data);
+        } catch (e) {
+          console.warn('Custom alert JS error:', e);
+        }
+      }
+
+      // Remove after duration (let the HTML/CSS handle its own animations)
+      setTimeout(() => {
+        container.innerHTML = '';
+        applyPosition();
+        showNext();
+      }, duration);
+      return;
+    }
+
+    // ── Simple text mode (fallback) ──
+    const layout = alertConfig.layout || 'below';
+    const box = document.createElement('div');
+    box.className = 'alert-box alert-layout-' + layout;
+
+    // Image
+    if (alertConfig.image) {
+      const img = document.createElement('img');
+      img.className = 'alert-image';
+      img.src = alertConfig.image.startsWith('http') ? alertConfig.image : '/assets/' + alertConfig.image;
+      img.onerror = () => img.remove();
+      box.appendChild(img);
+    }
+
+    // Text wrapper (for overlay + side layouts, text sits over or beside image)
+    const textWrap = document.createElement('div');
+    textWrap.className = 'alert-text-wrap';
+
+    const textEl = document.createElement('div');
+    textEl.className = 'alert-text';
+    textEl.style.fontSize = (alertConfig.fontSize || 32) + 'px';
+    textEl.style.color = alertConfig.fontColor || '#ffffff';
+    textEl.innerHTML = replaceVars(alertConfig.text || '', data);
+    textWrap.appendChild(textEl);
+
+    // Sub-message (for subs/cheers)
+    if (data.message) {
+      const subText = document.createElement('div');
+      subText.className = 'alert-sub-text';
+      subText.style.fontSize = Math.max(14, (alertConfig.fontSize || 32) * 0.5) + 'px';
+      subText.style.color = alertConfig.fontColor || '#ffffff';
+      subText.textContent = data.message;
+      textWrap.appendChild(subText);
+    }
+
+    box.appendChild(textWrap);
+
+    container.innerHTML = '';
+    container.appendChild(box);
+
+    // Animate in
+    const animClass = 'anim-' + (alertConfig.animation || 'fadeIn');
+    box.classList.add(animClass);
+
+    // Hold, then animate out
+    setTimeout(() => {
+      box.classList.remove(animClass);
+      box.classList.add('anim-fadeOut');
+      setTimeout(() => {
+        container.innerHTML = '';
+        showNext();
+      }, 500);
+    }, duration);
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  loadConfig();
+  connectWS();
+})();
+</script>
+</body>
+</html>

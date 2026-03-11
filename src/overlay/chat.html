@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Chatty Chat Overlay</title>
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+
+  #chat-container {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    overflow: hidden;
+  }
+
+  .overlay-msg {
+    padding: 4px 8px;
+    margin: 2px 0;
+    line-height: 1.4;
+    word-wrap: break-word;
+    opacity: 1;
+    transition: opacity 0.5s ease;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.8), 0 0 4px rgba(0,0,0,0.4);
+  }
+
+  .overlay-msg.fading {
+    opacity: 0;
+  }
+
+  .overlay-timestamp {
+    color: rgba(255,255,255,0.5);
+    font-size: 0.8em;
+    margin-right: 4px;
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  }
+
+  .overlay-badge {
+    display: inline-block;
+    width: 1.2em;
+    height: 1.2em;
+    vertical-align: middle;
+    margin-right: 2px;
+    border-radius: 2px;
+  }
+
+  .overlay-author {
+    font-weight: 700;
+    margin-right: 4px;
+  }
+
+  .overlay-text {
+    color: #ffffff;
+  }
+
+  .overlay-emote {
+    display: inline-block;
+    height: 1.5em;
+    vertical-align: middle;
+    margin: -2px 1px;
+  }
+
+  /* Animations */
+  @keyframes slideInLeft {
+    from { opacity: 0; transform: translateX(-30px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes slideInRight {
+    from { opacity: 0; transform: translateX(30px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes slideInUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .anim-slideIn { animation: slideInLeft 0.3s ease forwards; }
+  .anim-slideInRight { animation: slideInRight 0.3s ease forwards; }
+  .anim-fadeIn { animation: fadeIn 0.3s ease forwards; }
+  .anim-slideUp { animation: slideInUp 0.3s ease forwards; }
+</style>
+</head>
+<body>
+<div id="chat-container"></div>
+<style id="custom-css"></style>
+
+<script>
+(function() {
+  const container = document.getElementById('chat-container');
+  const customCssEl = document.getElementById('custom-css');
+  let config = null;
+  let ws = null;
+  let messageCount = 0;
+
+  const chatPath = location.pathname.replace(/^\//, '');
+  const configUrl = '/config/' + (chatPath || 'chat');
+
+  async function loadConfig() {
+    try {
+      const res = await fetch(configUrl);
+      config = await res.json();
+      applyConfig();
+    } catch (e) {
+      console.error('Failed to load chat config:', e);
+      config = {
+        enabled: true, showBadges: true, showTimestamps: false,
+        fontSize: 16, maxMessages: 6, fadeOut: true, fadeDelay: 30,
+        animation: 'slideIn',
+        position: { x: 2, y: 60, width: 25, height: 35 },
+        css: '',
+      };
+      applyConfig();
+    }
+  }
+
+  function applyConfig() {
+    if (!config) return;
+    const pos = config.position || { x: 2, y: 60, width: 25, height: 35 };
+    container.style.left = pos.x + '%';
+    container.style.top = pos.y + '%';
+    container.style.width = pos.width + '%';
+    container.style.height = pos.height + '%';
+    container.style.fontSize = (config.fontSize || 16) + 'px';
+    customCssEl.textContent = config.css || '';
+  }
+
+  function connectWS() {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    ws = new WebSocket(proto + '//' + location.host);
+
+    ws.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'chat') {
+          addMessage(msg.data);
+        } else if (msg.type === 'config-reload') {
+          loadConfig();
+        }
+      } catch {}
+    };
+
+    ws.onclose = () => {
+      setTimeout(connectWS, 3000);
+    };
+
+    ws.onerror = () => {};
+  }
+
+  function addMessage(data) {
+    if (!config || !config.enabled) return;
+
+    const div = document.createElement('div');
+    div.className = 'overlay-msg';
+    messageCount++;
+
+    let html = '';
+
+    // Timestamp
+    if (config.showTimestamps) {
+      const now = new Date();
+      const h = now.getHours().toString().padStart(2, '0');
+      const m = now.getMinutes().toString().padStart(2, '0');
+      html += '<span class="overlay-timestamp">' + h + ':' + m + '</span>';
+    }
+
+    // Badges
+    if (config.showBadges && data.badges) {
+      for (const badge of data.badges) {
+        if (badge.url) {
+          html += '<img class="overlay-badge" src="' + escapeAttr(badge.url) + '" alt="' + escapeAttr(badge.name || '') + '">';
+        }
+      }
+    }
+
+    // Author
+    const color = data.color || '#ffffff';
+    html += '<span class="overlay-author" style="color:' + escapeAttr(color) + ';">' + escapeHtml(data.displayName || data.username || '') + '</span>';
+
+    // Message with emotes
+    if (data.html) {
+      html += '<span class="overlay-text">' + data.html + '</span>';
+    } else {
+      html += '<span class="overlay-text">' + escapeHtml(data.message || '') + '</span>';
+    }
+
+    div.innerHTML = html;
+
+    // Animation
+    const animClass = 'anim-' + (config.animation || 'slideIn');
+    div.classList.add(animClass);
+
+    container.appendChild(div);
+
+    // Trim old messages
+    const max = config.maxMessages || 30;
+    while (container.children.length > max) {
+      container.firstElementChild.remove();
+    }
+
+    // Fade out
+    if (config.fadeOut) {
+      const fadeDelay = (config.fadeDelay || 30) * 1000;
+      setTimeout(() => {
+        div.classList.add('fading');
+        setTimeout(() => {
+          if (div.parentNode) div.remove();
+        }, 600);
+      }, fadeDelay);
+    }
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  function escapeAttr(text) {
+    return text.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  loadConfig();
+  connectWS();
+})();
+</script>
+</body>
+</html>
