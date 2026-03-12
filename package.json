@@ -52,7 +52,7 @@
       "category": "public.app-category.social-networking"
     },
     "linux": {
-      "target": ["AppImage", "deb", "pacman"],
+      "target": ["AppImage", "deb", "rpm", "pacman"],
       "artifactName": "Chatty.${ext}",
       "category": "Chat"
     }
