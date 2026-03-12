@@ -167,11 +167,13 @@ async function checkAppUpdate() {
 
       try {
         const res = await window.chatty.downloadUpdate();
-        if (res.error) {
-          btn.textContent = 'Failed';
+        if (!res.success) {
+          btn.textContent = res.message || 'Failed';
           btn.disabled = false;
           setTimeout(() => { btn.textContent = 'Update Now'; }, 3000);
           unsub();
+        } else {
+          btn.textContent = 'Restarting...';
         }
         // If successful, app will quit and relaunch
       } catch {

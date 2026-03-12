@@ -1,5 +1,13 @@
 # Chatty — Changelog
 
+## v1.3.3 (2026-03-11)
+
+### Bug Fixes
+- **Auto-updater install**: Linux AppImage updates now work correctly (can't overwrite a running FUSE-mounted AppImage; writes update alongside, swaps, relaunches)
+- **Auto-updater relaunch**: `app.relaunch()` now uses the AppImage path instead of the electron binary
+- **Auto-updater Windows**: Added delay before quit so the IPC response reaches the renderer
+- **Update UI**: Fixed update result check (`res.error` → `!res.success`), shows "Restarting..." on success
+
 ## v1.3.2 (2026-03-11)
 
 ### Bug Fixes

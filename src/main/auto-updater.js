@@ -224,10 +224,11 @@ async function downloadAndInstall(onProgress) {
 
   // Platform-specific installation
   if (platform === 'win32') {
-    // Windows: launch the installer and quit
+    // Windows: launch the NSIS installer and quit after a short delay
+    // (delay ensures the IPC response reaches the renderer before the app exits)
     try {
       execFile(tempFilePath, [], { detached: true, stdio: 'ignore' }).unref();
-      app.quit();
+      setTimeout(() => app.quit(), 500);
       return { success: true, message: 'Installer launched. The app will now quit.' };
     } catch (err) {
       return { success: false, message: `Failed to launch installer: ${err.message}` };
@@ -235,22 +236,33 @@ async function downloadAndInstall(onProgress) {
   }
 
   if (platform === 'linux') {
-    // Linux: replace the current AppImage with the downloaded one
-    const currentExePath = process.env.APPIMAGE || app.getPath('exe');
+    // Linux AppImage: can't overwrite a running AppImage (FUSE mount).
+    // Write the new file alongside the old one, remove old, rename new, then relaunch.
+    const appImagePath = process.env.APPIMAGE;
+    if (!appImagePath) {
+      return { success: false, message: 'Not running as AppImage — cannot auto-update in dev mode.' };
+    }
+
+    const updatePath = appImagePath + '.update';
 
     try {
-      // Copy the downloaded file over the current executable
-      fs.copyFileSync(tempFilePath, currentExePath);
-      fs.chmodSync(currentExePath, 0o755);
-
-      // Clean up the temp file
+      // Copy downloaded file next to the current AppImage
+      fs.copyFileSync(tempFilePath, updatePath);
+      fs.chmodSync(updatePath, 0o755);
       fs.unlinkSync(tempFilePath);
 
-      // Relaunch and quit
-      app.relaunch();
-      app.quit();
+      // Replace old AppImage: rename the update over the original
+      // fs.renameSync won't work across filesystems, so use copy + delete
+      fs.unlinkSync(appImagePath);
+      fs.renameSync(updatePath, appImagePath);
+
+      // Relaunch from the updated AppImage
+      app.relaunch({ execPath: appImagePath });
+      setTimeout(() => app.quit(), 500);
       return { success: true, message: 'Update applied. The app will now relaunch.' };
     } catch (err) {
+      // Clean up partial files on failure
+      try { fs.unlinkSync(updatePath); } catch {}
       return { success: false, message: `Failed to apply update: ${err.message}` };
     }
   }
