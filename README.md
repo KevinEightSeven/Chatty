@@ -122,17 +122,40 @@ Replace a dozen browser tabs and apps with one lightweight desktop client — ch
 
 Download the latest release for your platform from the [Releases](https://github.com/KevinEightSeven/Chatty/releases) page:
 
-| Platform | Download |
-|----------|----------|
-| Windows  | `Chatty-Setup.exe` |
-| macOS    | `Chatty.dmg` |
-| Linux    | `Chatty.AppImage` |
+| Platform | Package | Download |
+|----------|---------|----------|
+| Windows  | Installer | `Chatty-Setup.exe` |
+| Linux    | AppImage (universal) | `Chatty.AppImage` |
+| Linux    | Arch Linux | `Chatty.pacman` |
+| Linux    | Debian / Ubuntu | `Chatty.deb` |
+| Linux    | Fedora / RHEL | `Chatty.rpm` |
 
-### Linux
+### Windows
+Run `Chatty-Setup.exe` and follow the installer prompts.
+
+### Linux — AppImage (any distro)
 ```bash
-chmod +x Chatty-*.AppImage
-./Chatty-*.AppImage
+chmod +x Chatty.AppImage
+./Chatty.AppImage
 ```
+
+### Linux — Arch Linux
+```bash
+sudo pacman -U Chatty.pacman
+```
+Then launch `chatty` from your application menu or terminal.
+
+### Linux — Debian / Ubuntu
+```bash
+sudo dpkg -i Chatty.deb
+```
+Then launch `chatty` from your application menu or terminal.
+
+### Linux — Fedora / RHEL
+```bash
+sudo rpm -i Chatty.rpm
+```
+Then launch `chatty` from your application menu or terminal.
 
 ---
 
