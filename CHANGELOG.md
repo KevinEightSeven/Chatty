@@ -1,5 +1,14 @@
 # Chatty — Changelog
 
+## v1.3.2 (2026-03-11)
+
+### Bug Fixes
+- **Duplicate messages**: Chat messages were appearing 3x due to stacking IRC listeners; now deduped with a listener guard
+- **Alert defaults**: Removed custom HTML/CSS/JS alert templates; alerts now use clean simple text mode by default
+- **Chat overlay first message**: Badges and emotes were missing on the first message due to unawaited async loading; now fully awaited
+- **OBS multi-scene alerts**: Multiple scenes playing alert sounds simultaneously; overlays now use OBS visibility detection (`obsSourceVisibleChanged`) so only the active OBS scene plays alerts
+- **Settings cleanup**: Removed redundant "Chat Logs" section from settings (covered by Data Folder)
+
 ## v1.3.1 (2026-03-11)
 
 ### Bug Fixes

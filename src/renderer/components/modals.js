@@ -97,7 +97,6 @@ class ModalManager {
     const timestampEnabled = await window.chatty.getConfig('settings.showTimestamps') ?? true;
     const maxMessages = await window.chatty.getConfig('settings.maxMessages') || 500;
     const closeToTray = await window.chatty.getConfig('settings.closeToTray') ?? true;
-    const logsPath = await window.chatty.getLogsPath();
     const userDataPath = await window.chatty.getUserDataPath();
 
     const autoStartOverlay = await window.chatty.getConfig('settings.autoStartOverlay') ?? false;
@@ -138,11 +137,6 @@ class ModalManager {
         <p class="form-hint" style="margin-top:6px;">Copy this folder to transfer all your settings to another computer.</p>
       </div>
       <div class="account-section">
-        <h3>Chat Logs</h3>
-        <p class="form-hint">Logs are saved to:</p>
-        <div style="background:var(--bg-tertiary);padding:8px;border-radius:4px;font-family:var(--font-mono);font-size:11px;color:var(--text-secondary);margin-top:4px;word-break:break-all;cursor:pointer;" id="settings-logs-path" title="Click to open">${this._escapeHtml(logsPath)}</div>
-      </div>
-      <div class="account-section">
         <button class="btn-primary" id="btn-save-settings">Save Settings</button>
       </div>
     `;
@@ -162,9 +156,6 @@ class ModalManager {
       window.chatty.openExternal(userDataPath);
     });
 
-    document.getElementById('settings-logs-path')?.addEventListener('click', () => {
-      window.chatty.openExternal(logsPath);
-    });
 
     document.getElementById('btn-save-settings')?.addEventListener('click', async () => {
       const newFontSize = parseInt(document.getElementById('setting-font-size').value) || 13;

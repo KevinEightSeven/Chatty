@@ -33,6 +33,7 @@ let eventSub = null;
 let tray = null;
 let overlayServer = null;
 let overlayChatRenderer = null;
+const chatListeners = new Set(); // channels with an active IRC listener
 const profileCards = new Map(); // username → BrowserWindow
 
 // Set up per-user data folder — creates {userData}/{username}/ with logs and settings subfolders
@@ -610,7 +611,9 @@ ipcMain.handle('chat:is-connected', async () => {
 ipcMain.on('chat:listen', (_event, channel) => {
   if (!twitchChat) return;
   const ch = channel.toLowerCase().replace('#', '');
-  twitchChat.onChannel(ch, (parsed) => {
+  if (chatListeners.has(ch)) return; // already listening
+  chatListeners.add(ch);
+  twitchChat.onChannel(ch, async (parsed) => {
     mainWindow?.webContents.send(`chat:message:${ch}`, parsed);
 
     // Forward PRIVMSG to overlay server for chat overlay (only the logged-in user's own channel)
@@ -618,25 +621,25 @@ ipcMain.on('chat:listen', (_event, channel) => {
     if (overlayServer?.isRunning() && parsed.command === 'PRIVMSG' && ownChannel && ch === ownChannel) {
       const tags = parsed.tags || {};
       const badgeStr = tags.badges || '';
-      const userId = tags['user-id'] || '';
+      const channelId = tags['room-id'] || '';
 
-      // Lazily initialize the chat renderer
+      // Lazily initialize the chat renderer and await data loading
       if (!overlayChatRenderer && twitchAPI) {
         overlayChatRenderer = new OverlayChatRenderer(twitchAPI);
-        overlayChatRenderer.loadGlobalBadges();
-        overlayChatRenderer.loadThirdPartyGlobal();
+        await Promise.all([
+          overlayChatRenderer.loadGlobalBadges(),
+          overlayChatRenderer.loadThirdPartyGlobal(),
+        ]);
       }
 
-      // Load channel-specific data if needed
-      if (overlayChatRenderer && userId) {
-        const channelUser = tags['room-id'] || '';
-        if (channelUser) {
-          overlayChatRenderer.loadChannelBadges(channelUser);
-          overlayChatRenderer.loadThirdPartyChannel(channelUser);
-        }
+      // Load channel-specific data if needed (await so first message gets badges)
+      if (overlayChatRenderer && channelId) {
+        await Promise.all([
+          overlayChatRenderer.loadChannelBadges(channelId),
+          overlayChatRenderer.loadThirdPartyChannel(channelId),
+        ]);
       }
 
-      const channelId = tags['room-id'] || '';
       const badges = overlayChatRenderer
         ? overlayChatRenderer.resolveBadges(badgeStr, channelId)
         : [];
@@ -660,6 +663,7 @@ ipcMain.on('chat:listen', (_event, channel) => {
 ipcMain.on('chat:unlisten', (_event, channel) => {
   if (!twitchChat) return;
   const ch = channel.toLowerCase().replace('#', '');
+  chatListeners.delete(ch);
   twitchChat.offChannel(ch);
 });
 

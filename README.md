@@ -81,9 +81,33 @@ Replace a dozen browser tabs and apps with one lightweight desktop client — ch
 - New message indicator when scrolled up
 - Auto-scroll with smart pause on scroll-up
 
+### Streamer Tools — OBS Overlay System
+- Scene-based overlay management — each scene has its own alerts, chat overlay, and position settings
+- Alert system with customizable images, sounds, animations, and text templates
+- Alert variants (resub, gifted sub, bit thresholds, raid viewer thresholds)
+- Chat overlay with configurable badges, timestamps, fade, font size, animations, and custom CSS
+- Position preview with drag-and-drop placement on a resolution-accurate canvas
+- Local HTTP + WebSocket server for OBS Browser Sources
+- Scene URLs: `/alerts`, `/chat`, `/alerts2`, `/chat2`, etc.
+- OBS visibility detection — only the active OBS scene plays alert sounds (no duplicates)
+- Auto-start overlay server option
+
 ### Alerts (EventSub)
 - Real-time alerts for follows, subscriptions, cheers, and raids
 - Powered by Twitch EventSub WebSocket
+
+### Twitch Commands
+- Full slash commands: `/ban`, `/timeout`, `/mod`, `/vip`, `/raid`, `/announce`, `/settitle`, `/setgame`, and more
+- Command autocomplete with `/` prefix
+- Polls display in chat
+
+### System Tray
+- Close-to-tray support (enabled by default)
+- System tray icon with quick access
+
+### Auto-Updater
+- Checks GitHub releases on startup
+- Downloads and installs updates automatically
 
 ### Customization
 - Dark/gray modern theme

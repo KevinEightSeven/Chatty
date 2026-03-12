@@ -137,7 +137,7 @@
 
   function connectWS() {
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    ws = new WebSocket(proto + '//' + location.host);
+    ws = new WebSocket(proto + '//' + location.host + location.pathname);
 
     ws.onmessage = (e) => {
       try {
