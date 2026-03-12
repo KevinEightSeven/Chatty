@@ -17,7 +17,10 @@
     "gaming",
     "electron"
   ],
-  "author": "sempd",
+  "author": {
+    "name": "sempd",
+    "email": "sempd@users.noreply.github.com"
+  },
   "license": "MIT",
   "type": "commonjs",
   "build": {
@@ -49,7 +52,7 @@
       "category": "public.app-category.social-networking"
     },
     "linux": {
-      "target": ["AppImage", "deb", "rpm", "pacman"],
+      "target": ["AppImage", "deb", "pacman"],
       "artifactName": "Chatty.${ext}",
       "category": "Chat"
     }
