@@ -55,6 +55,9 @@
       "target": ["AppImage", "deb", "rpm", "pacman"],
       "artifactName": "Chatty.${ext}",
       "category": "Chat"
+    },
+    "pacman": {
+      "depends": ["gtk3", "libnotify", "nss", "libxss", "libxtst", "xdg-utils", "at-spi2-core", "util-linux-libs"]
     }
   },
   "devDependencies": {
