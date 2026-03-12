@@ -126,24 +126,25 @@ Download the latest release for your platform from the [Releases](https://github
 |----------|---------|----------|
 | Windows  | Installer | `Chatty-Setup.exe` |
 | Linux    | AppImage (universal) | `Chatty.AppImage` |
-| Linux    | Arch Linux | `Chatty.pacman` |
+| Linux    | Arch Linux (AUR) | [`chatty-twitch`](https://aur.archlinux.org/packages/chatty-twitch) |
 | Linux    | Debian / Ubuntu | `Chatty.deb` |
 | Linux    | Fedora / RHEL | `Chatty.rpm` |
 
 ### Windows
 Run `Chatty-Setup.exe` and follow the installer prompts.
 
+### Linux — Arch Linux (AUR)
+```bash
+yay -S chatty-twitch
+# or
+paru -S chatty-twitch
+```
+
 ### Linux — AppImage (any distro)
 ```bash
 chmod +x Chatty.AppImage
 ./Chatty.AppImage
 ```
-
-### Linux — Arch Linux
-```bash
-sudo pacman -U Chatty.pacman
-```
-Then launch `chatty` from your application menu or terminal.
 
 ### Linux — Debian / Ubuntu
 ```bash

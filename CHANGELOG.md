@@ -2,13 +2,24 @@
 
 <!--
   SESSION NOTE FOR AI ASSISTANTS:
-  Before making any changes, READ this changelog and the project structure below to
-  understand the full application. When work is done, ALWAYS:
+  Before making any changes, READ this changelog and the project structure at the bottom
+  to understand the full application.
+
+  RELEASE PROCESS — do this every time work is done:
   1. Update this changelog with all changes made
   2. Bump the version in package.json AND src/renderer/index.html (titlebar)
-  3. Commit, tag (vX.Y.Z), push, build all targets (AppImage, deb, rpm, pacman, Windows),
-     and create a GitHub release with all artifacts uploaded
-  4. Keep the changelog up to date every session — it is the single source of truth
+  3. Commit, tag (vX.Y.Z), push to GitHub
+  4. Build GitHub release artifacts: AppImage, .deb, .rpm, and Windows installer (Chatty-Setup.exe)
+     - `npm run dist:linux` builds AppImage + deb + rpm
+     - `npm run dist:win` builds Windows installer
+     - Do NOT build .pacman for GitHub — Arch is handled via AUR
+  5. Create GitHub release, upload the 4 artifacts
+  6. Update AUR package (separate repo at /mnt/sd1/Dev/Projects/chatty-twitch):
+     - Bump pkgver in PKGBUILD
+     - Update sha256sums: `sha256sum release/Chatty.AppImage | awk '{print $1}'`
+     - Regenerate .SRCINFO: `cd /mnt/sd1/Dev/Projects/chatty-twitch && makepkg --printsrcinfo > .SRCINFO`
+     - Commit and push: `git push origin master`
+  7. Keep the changelog up to date every session — it is the single source of truth
      for what changed and when, especially across session boundaries.
 -->
 
@@ -24,7 +35,8 @@
 ### Improvements
 - **Alerts split persistence**: Alerts panel position is saved/restored with the session like chat splits
 - **Streamer Tools icon**: Changed from video camera to shield icon
-- **Linux packages**: Added .deb, .rpm, and .pacman builds alongside AppImage
+- **Linux packages**: Added .deb and .rpm builds alongside AppImage
+- **AUR package**: Published `chatty-twitch` to the Arch User Repository
 - **Install instructions**: README updated with per-distro install commands
 
 ## v1.3.3 (2026-03-11)
