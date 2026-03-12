@@ -24,6 +24,7 @@ let logsDir = path.join(app.getPath('userData'), 'logs');
 if (!fs.existsSync(logsDir)) fs.mkdirSync(logsDir, { recursive: true });
 
 let userDataDir = null; // Per-user data folder: {userData}/{username}/
+let alertsDir = null;   // Per-user alerts folder: {userDataDir}/alerts/
 
 let mainWindow = null;
 let authManager = null;
@@ -33,7 +34,7 @@ let eventSub = null;
 let tray = null;
 let overlayServer = null;
 let overlayChatRenderer = null;
-const chatListeners = new Set(); // channels with an active IRC listener
+const chatListeners = new Map(); // channel -> listener count (ref-counting)
 const profileCards = new Map(); // username → BrowserWindow
 
 // Set up per-user data folder — creates {userData}/{username}/ with logs and settings subfolders
@@ -45,10 +46,13 @@ function setupUserDataFolder(username) {
   const userLogsDir = path.join(userDataDir, 'logs');
   const userSettingsDir = path.join(userDataDir, 'settings');
   const userAssetsDir = path.join(userDataDir, 'overlay-assets');
+  const userAlertsDir = path.join(userDataDir, 'alerts');
 
-  for (const dir of [userDataDir, userLogsDir, userSettingsDir, userAssetsDir]) {
+  for (const dir of [userDataDir, userLogsDir, userSettingsDir, userAssetsDir, userAlertsDir]) {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   }
+
+  alertsDir = userAlertsDir;
 
   // Migrate existing logs from generic folder to user folder (one-time)
   const genericLogsDir = path.join(app.getPath('userData'), 'logs');
@@ -453,6 +457,7 @@ ipcMain.handle('eventsub:start', async () => {
         const subs = [
           { type: 'channel.follow', version: '2', condition: { broadcaster_user_id: userId, moderator_user_id: userId } },
           { type: 'channel.subscribe', version: '1', condition: { broadcaster_user_id: userId } },
+          { type: 'channel.subscription.gift', version: '1', condition: { broadcaster_user_id: userId } },
           { type: 'channel.subscription.message', version: '1', condition: { broadcaster_user_id: userId } },
           { type: 'channel.cheer', version: '1', condition: { broadcaster_user_id: userId } },
           { type: 'channel.raid', version: '1', condition: { to_broadcaster_user_id: userId } },
@@ -466,6 +471,13 @@ ipcMain.handle('eventsub:start', async () => {
       } else {
         mainWindow?.webContents.send('eventsub:event', evt);
 
+        // Save alert to persistent log file
+        if (evt.event && alertsDir) {
+          const logFile = path.join(alertsDir, 'alerts.log');
+          const entry = JSON.stringify({ ...evt, timestamp: Date.now() }) + '\n';
+          fs.appendFile(logFile, entry, () => {});
+        }
+
         // Forward to overlay server for OBS alerts
         if (overlayServer?.isRunning() && evt.event) {
           const e = evt.event;
@@ -478,6 +490,12 @@ ipcMain.handle('eventsub:start', async () => {
             alertData.message = e.message || '';
             alertData.is_gift = e.is_gift || false;
             alertData.months = 1;
+          } else if (evt.type === 'channel.subscription.gift') {
+            alertData.user = e.user_name || e.user_login || 'Anonymous';
+            alertData.tier = e.tier || '1';
+            alertData.total = e.total || 1;
+            alertData.cumulative_total = e.cumulative_total || 0;
+            alertData.is_anonymous = e.is_anonymous || false;
           } else if (evt.type === 'channel.subscription.message') {
             alertData.user = e.user_name || e.user_login || 'Someone';
             alertData.tier = e.tier || '1';
@@ -502,6 +520,24 @@ ipcMain.handle('eventsub:start', async () => {
 
     setTimeout(() => resolve({ error: 'EventSub connection timed out' }), 15000);
   });
+});
+
+ipcMain.handle('alerts:get-log', async () => {
+  if (!alertsDir) return [];
+  const logFile = path.join(alertsDir, 'alerts.log');
+  try {
+    if (!fs.existsSync(logFile)) return [];
+    const content = fs.readFileSync(logFile, 'utf-8');
+    const lines = content.split('\n').filter(Boolean);
+    // Return last 500 entries
+    const entries = [];
+    for (const line of lines.slice(-500)) {
+      try { entries.push(JSON.parse(line)); } catch {}
+    }
+    return entries;
+  } catch {
+    return [];
+  }
 });
 
 ipcMain.handle('eventsub:stop', async () => {
@@ -577,7 +613,12 @@ ipcMain.handle('chat:join', async (_event, channel) => {
 
 ipcMain.handle('chat:part', async (_event, channel) => {
   if (!twitchChat) return { error: 'Chat not connected' };
-  twitchChat.part(channel);
+  const ch = channel.toLowerCase().replace('#', '');
+  // Only PART if no other splits are still watching this channel
+  const count = chatListeners.get(ch) || 0;
+  if (count <= 0) {
+    twitchChat.part(channel);
+  }
   return { success: true };
 });
 
@@ -611,8 +652,9 @@ ipcMain.handle('chat:is-connected', async () => {
 ipcMain.on('chat:listen', (_event, channel) => {
   if (!twitchChat) return;
   const ch = channel.toLowerCase().replace('#', '');
-  if (chatListeners.has(ch)) return; // already listening
-  chatListeners.add(ch);
+  const count = chatListeners.get(ch) || 0;
+  chatListeners.set(ch, count + 1);
+  if (count > 0) return; // callback already registered, just bump the count
   twitchChat.onChannel(ch, async (parsed) => {
     mainWindow?.webContents.send(`chat:message:${ch}`, parsed);
 
@@ -663,8 +705,13 @@ ipcMain.on('chat:listen', (_event, channel) => {
 ipcMain.on('chat:unlisten', (_event, channel) => {
   if (!twitchChat) return;
   const ch = channel.toLowerCase().replace('#', '');
-  chatListeners.delete(ch);
-  twitchChat.offChannel(ch);
+  const count = chatListeners.get(ch) || 0;
+  if (count <= 1) {
+    chatListeners.delete(ch);
+    twitchChat.offChannel(ch);
+  } else {
+    chatListeners.set(ch, count - 1);
+  }
 });
 
 // ── Game API ──

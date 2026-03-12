@@ -10,9 +10,6 @@ class ModalManager {
     this.closeBtn = document.getElementById('modal-close');
 
     this.closeBtn.addEventListener('click', () => this.close());
-    this.overlay.addEventListener('click', (e) => {
-      if (e.target === this.overlay) this.close();
-    });
   }
 
   open(title, content) {
@@ -220,9 +217,6 @@ class SearchDialog {
 
   _setupListeners() {
     this.closeBtn.addEventListener('click', () => this.close());
-    this.overlay.addEventListener('click', (e) => {
-      if (e.target === this.overlay) this.close();
-    });
 
     // Tab switching
     document.querySelectorAll('.search-tab').forEach((tab) => {

@@ -5,10 +5,11 @@ const IRC_URL = 'wss://irc-ws.chat.twitch.tv:443';
 class TwitchChat {
   constructor() {
     this.ws = null;
-    this.channels = new Map(); // channel -> { onMessage, onUsernotice, onRoomstate, ... }
+    this.channels = new Map(); // channel -> { callbacks: [] }
     this.nick = null;
     this.token = null;
     this._pingInterval = null;
+    this._pongTimeout = null;
     this._reconnectTimeout = null;
     this._reconnectDelay = 1000;
     this.connected = false;
@@ -53,6 +54,7 @@ class TwitchChat {
 
   disconnect() {
     if (this._pingInterval) clearInterval(this._pingInterval);
+    if (this._pongTimeout) clearTimeout(this._pongTimeout);
     if (this._reconnectTimeout) clearTimeout(this._reconnectTimeout);
     this.channels.clear();
     if (this.ws) {
@@ -114,9 +116,20 @@ class TwitchChat {
     if (line.includes('376') || line.includes(':Welcome, GLHF!')) {
       this.connected = true;
       if (this.onStateChange) this.onStateChange(true);
+      // Start client-side PING keepalive (detect silent disconnects)
+      this._startPingKeepAlive();
       // Rejoin all channels
       for (const ch of this.channels.keys()) {
         this.ws.send(`JOIN #${ch}`);
+      }
+      return;
+    }
+
+    // PONG response — clear the pong timeout
+    if (line.includes('PONG')) {
+      if (this._pongTimeout) {
+        clearTimeout(this._pongTimeout);
+        this._pongTimeout = null;
       }
       return;
     }
@@ -206,7 +219,24 @@ class TwitchChat {
     return tags;
   }
 
+  _startPingKeepAlive() {
+    if (this._pingInterval) clearInterval(this._pingInterval);
+    if (this._pongTimeout) clearTimeout(this._pongTimeout);
+    // Send PING every 60s; if no PONG within 10s, force reconnect
+    this._pingInterval = setInterval(() => {
+      if (this.ws?.readyState === WebSocket.OPEN) {
+        this.ws.send('PING :keepalive');
+        this._pongTimeout = setTimeout(() => {
+          console.warn('[TwitchChat] No PONG received — forcing reconnect');
+          if (this.ws) this.ws.close();
+        }, 10000);
+      }
+    }, 60000);
+  }
+
   _scheduleReconnect() {
+    if (this._pingInterval) clearInterval(this._pingInterval);
+    if (this._pongTimeout) clearTimeout(this._pongTimeout);
     if (this._reconnectTimeout) clearTimeout(this._reconnectTimeout);
     this._reconnectTimeout = setTimeout(() => {
       if (this.nick && this.token) {

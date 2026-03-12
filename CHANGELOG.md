@@ -1,5 +1,19 @@
 # Chatty — Changelog
 
+## v1.3.4 (2026-03-12)
+
+### Bug Fixes
+- **Missing chat messages**: Added client-side PING keepalive (60s interval) to detect silent IRC disconnects and auto-reconnect
+- **Multi-split same channel**: Closing one split no longer kills chat for other splits on the same channel (ref-counted listeners)
+- **Channel name click**: Disabled popout player on channel name click; use the dedicated video icon instead
+- **Modal close behavior**: Streamer Tools and Settings now only close via the close button, not by clicking the background
+- **Alert log storage**: Alerts now persist to `{userData}/alerts/alerts.log` (file-based) instead of electron-store
+
+### Improvements
+- **Alerts split persistence**: Alerts panel position is saved/restored with the session like chat splits
+- **Streamer Tools icon**: Changed from video camera to shield icon
+- **Linux packages**: Added .deb, .rpm, and .pacman builds alongside AppImage
+
 ## v1.3.3 (2026-03-11)
 
 ### Bug Fixes

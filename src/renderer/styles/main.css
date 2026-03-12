@@ -334,12 +334,6 @@ input, textarea, select, [contenteditable] {
   white-space: nowrap;
   flex: 1;
   min-width: 0;
-  cursor: pointer;
-}
-
-.split-channel-name:hover {
-  color: var(--accent-bright);
-  text-decoration: underline;
 }
 
 /* Selected split highlight — bright blue glow */
@@ -1497,9 +1491,15 @@ img.chat-badge {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  padding: 6px 0;
+  padding: 6px 4px;
   border-bottom: 1px solid var(--border);
   font-size: 12px;
+  border-radius: 4px;
+  transition: background 0.1s;
+}
+
+.alert-entry:hover {
+  background: var(--bg-tertiary);
 }
 
 .alert-entry:last-child {

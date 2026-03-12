@@ -99,6 +99,7 @@ contextBridge.exposeInMainWorld('chatty', {
   // EventSub (Alerts)
   startEventSub: () => ipcRenderer.invoke('eventsub:start'),
   stopEventSub: () => ipcRenderer.invoke('eventsub:stop'),
+  getAlertLog: () => ipcRenderer.invoke('alerts:get-log'),
   onEventSubEvent: (callback) => {
     const handler = (_event, evt) => callback(evt);
     ipcRenderer.on('eventsub:event', handler);

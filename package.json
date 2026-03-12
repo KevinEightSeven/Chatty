@@ -1,6 +1,6 @@
 {
   "name": "chatty",
-  "version": "1.3.3",
+  "version": "1.3.4",
   "description": "Twitch Chat Client — inspired by Chatterino",
   "main": "src/main/main.js",
   "scripts": {
@@ -49,7 +49,7 @@
       "category": "public.app-category.social-networking"
     },
     "linux": {
-      "target": "AppImage",
+      "target": ["AppImage", "deb", "rpm", "pacman"],
       "artifactName": "Chatty.${ext}",
       "category": "Chat"
     }

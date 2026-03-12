@@ -135,13 +135,6 @@ class SplitManager {
       this.selectSplit(splitId);
     });
 
-    // Click channel name to open popout video player
-    panel.querySelector('.split-channel-name').addEventListener('click', () => {
-      if (splitData.channel) {
-        window.chatty.openPopoutPlayer(splitData.channel);
-      }
-    });
-
     // Drag-and-drop reordering
     this._setupDragDrop(panel, splitId);
 
@@ -1411,14 +1404,23 @@ class SplitManager {
     const newSplit = this.addSplit(activeTab.id);
     if (!newSplit) return;
 
-    newSplit._isAlertsSplit = true;
-    this._alertsSplitId = newSplit.id;
+    await this._initAlertsSplit(newSplit);
+    saveSession();
+  }
 
-    newSplit.element.querySelector('.split-channel-name').textContent = 'Alerts';
+  async _restoreAlertsSplit(tabId, row) {
+    const newSplit = this.addSplit(tabId, row);
+    if (!newSplit) return;
+    await this._initAlertsSplit(newSplit);
+  }
 
-    // Alerts panel has no per-split actions
+  async _initAlertsSplit(split) {
+    split._isAlertsSplit = true;
+    this._alertsSplitId = split.id;
 
-    const body = newSplit.element.querySelector('.split-body');
+    split.element.querySelector('.split-channel-name').textContent = 'Alerts';
+
+    const body = split.element.querySelector('.split-body');
     body.innerHTML = `
       <div class="alerts-panel">
         <div class="alerts-entries">
@@ -1444,14 +1446,34 @@ class SplitManager {
       return;
     }
 
-    entriesEl.innerHTML = `
-      <div class="alert-empty">
-        <div class="alert-empty-icon">&#x1F514;</div>
-        <div>Listening for alerts...<br><span style="font-size:11px;color:var(--text-muted);">New follows, subs, cheers, and raids will appear here.</span></div>
-      </div>
-    `;
+    // Load saved alert history
+    try {
+      const alertLog = await window.chatty.getAlertLog();
+      if (alertLog && alertLog.length > 0) {
+        entriesEl.innerHTML = '';
+        for (const saved of alertLog) {
+          const entry = this._createAlertEntry(saved, saved.timestamp);
+          if (entry) entriesEl.appendChild(entry);
+        }
+        entriesEl.scrollTop = entriesEl.scrollHeight;
+      } else {
+        entriesEl.innerHTML = `
+          <div class="alert-empty">
+            <div class="alert-empty-icon">&#x1F514;</div>
+            <div>Listening for alerts...<br><span style="font-size:11px;color:var(--text-muted);">New follows, subs, cheers, and raids will appear here.</span></div>
+          </div>
+        `;
+      }
+    } catch {
+      entriesEl.innerHTML = `
+        <div class="alert-empty">
+          <div class="alert-empty-icon">&#x1F514;</div>
+          <div>Listening for alerts...<br><span style="font-size:11px;color:var(--text-muted);">New follows, subs, cheers, and raids will appear here.</span></div>
+        </div>
+      `;
+    }
 
-    // Listen for events
+    // Listen for new events
     this._alertsRemoveListener = window.chatty.onEventSubEvent((evt) => {
       const empty = entriesEl.querySelector('.alert-empty');
       if (empty) empty.remove();
@@ -1466,15 +1488,13 @@ class SplitManager {
         }
       }
     });
-
-    saveSession();
   }
 
-  _createAlertEntry(evt) {
+  _createAlertEntry(evt, savedTimestamp) {
     const div = document.createElement('div');
     div.className = 'alert-entry';
 
-    const now = new Date();
+    const now = savedTimestamp ? new Date(savedTimestamp) : new Date();
     const time = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
     const e = evt.event;
 
@@ -1487,7 +1507,29 @@ class SplitManager {
     } else if (evt.type === 'channel.subscribe') {
       icon = '&#x2B50;';
       const tier = e.tier === '2000' ? 'Tier 2' : e.tier === '3000' ? 'Tier 3' : 'Tier 1';
-      text = `<strong>${this._escapeHtml(e.user_name)}</strong> subscribed (${tier})!`;
+      if (e.is_gift) {
+        text = `<strong>${this._escapeHtml(e.user_name)}</strong> was gifted a sub (${tier})!`;
+      } else {
+        text = `<strong>${this._escapeHtml(e.user_name)}</strong> subscribed (${tier})!`;
+      }
+    } else if (evt.type === 'channel.subscription.gift') {
+      icon = '&#x1F381;';
+      const tier = e.tier === '2000' ? 'Tier 2' : e.tier === '3000' ? 'Tier 3' : 'Tier 1';
+      const gifter = e.is_anonymous ? 'Anonymous' : (e.user_name || 'Someone');
+      const count = e.total || 1;
+      text = `<strong>${this._escapeHtml(gifter)}</strong> gifted <strong>${count}</strong> sub${count > 1 ? 's' : ''} (${tier})!`;
+      if (e.cumulative_total) {
+        text += `<br><span style="color:var(--text-secondary);">${e.cumulative_total} total gifts in this channel</span>`;
+      }
+    } else if (evt.type === 'channel.subscription.message') {
+      icon = '&#x1F389;';
+      const tier = e.tier === '2000' ? 'Tier 2' : e.tier === '3000' ? 'Tier 3' : 'Tier 1';
+      const months = e.cumulative_months || 1;
+      text = `<strong>${this._escapeHtml(e.user_name)}</strong> resubscribed (${tier}, ${months} months)!`;
+      const msg = e.message?.text || e.message || '';
+      if (msg) {
+        text += `<br><span style="color:var(--text-secondary);">${this._escapeHtml(typeof msg === 'string' ? msg : '')}</span>`;
+      }
     } else if (evt.type === 'channel.cheer') {
       icon = '&#x1F48E;';
       text = `<strong>${this._escapeHtml(e.user_name || 'Anonymous')}</strong> cheered <strong>${e.bits}</strong> bits!`;
@@ -1547,8 +1589,12 @@ class SplitManager {
           row.querySelectorAll(':scope > .split-panel').forEach((panel) => {
             const sid = panel.dataset.splitId;
             const split = this.splits.get(sid);
-            if (split && !split._isAlertsSplit) {
-              splits.push({ channel: split.channel || null });
+            if (split) {
+              if (split._isAlertsSplit) {
+                splits.push({ isAlerts: true });
+              } else {
+                splits.push({ channel: split.channel || null });
+              }
             }
           });
           if (splits.length > 0) rows.push({ splits });
@@ -1603,6 +1649,11 @@ class SplitManager {
         wrapper.appendChild(row);
 
         for (const splitData of rowData.splits) {
+          if (splitData.isAlerts) {
+            // Restore alerts split into this specific row
+            await this._restoreAlertsSplit(tabId, row);
+            continue;
+          }
           const newSplit = this.addSplit(tabId, row);
           if (!newSplit) continue;
 

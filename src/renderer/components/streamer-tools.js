@@ -15,11 +15,6 @@ class StreamerTools {
     if (this.closeBtn) {
       this.closeBtn.addEventListener('click', () => this.close());
     }
-    if (this.overlay) {
-      this.overlay.addEventListener('click', (e) => {
-        if (e.target === this.overlay) this.close();
-      });
-    }
   }
 
   async open() {
