@@ -39,6 +39,11 @@ html, body {
   user-select: none;
 }
 
+/* Allow text input/selection in all form elements */
+input, textarea, select, [contenteditable] {
+  user-select: text;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: var(--scrollbar-track); }

@@ -613,8 +613,9 @@ ipcMain.on('chat:listen', (_event, channel) => {
   twitchChat.onChannel(ch, (parsed) => {
     mainWindow?.webContents.send(`chat:message:${ch}`, parsed);
 
-    // Forward PRIVMSG to overlay server for chat overlay
-    if (overlayServer?.isRunning() && parsed.command === 'PRIVMSG') {
+    // Forward PRIVMSG to overlay server for chat overlay (only the logged-in user's own channel)
+    const ownChannel = authManager?.userInfo?.login?.toLowerCase();
+    if (overlayServer?.isRunning() && parsed.command === 'PRIVMSG' && ownChannel && ch === ownChannel) {
       const tags = parsed.tags || {};
       const badgeStr = tags.badges || '';
       const userId = tags['user-id'] || '';

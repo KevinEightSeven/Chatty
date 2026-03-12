@@ -343,6 +343,9 @@ class OverlayServer {
     if (this.server) return;
     this.port = port || this.store.get('overlay.port') || 7878;
 
+    // Ensure scenes exist (migrate from old flat config if needed)
+    this._ensureScenes();
+
     this.server = http.createServer((req, res) => this._handleRequest(req, res));
     this.wss = new WebSocket.Server({ server: this.server });
 
@@ -536,11 +539,22 @@ class OverlayServer {
     const result = {};
     for (const type of types) {
       const t = DEFAULT_TEMPLATES[type];
-      result[type] = alerts[type] || {
-        enabled: true, image: '', sound: '', text: defaultTexts[type],
-        duration: 8, animation: 'fadeIn', fontSize: 32, fontColor: '#ffffff', layout: 'below',
-        html: t.html, css: t.css, js: t.js,
-      };
+      if (alerts[type]) {
+        result[type] = { ...alerts[type] };
+        // Fill in default template when user hasn't customized HTML
+        if (!result[type].html) {
+          result[type].html = t.html;
+          result[type].css = result[type].css || t.css;
+          result[type].js = result[type].js || t.js;
+        }
+        if (!result[type].css) result[type].css = t.css;
+      } else {
+        result[type] = {
+          enabled: true, image: '', sound: '', text: defaultTexts[type],
+          duration: 8, animation: 'fadeIn', fontSize: 32, fontColor: '#ffffff', layout: 'below',
+          html: t.html, css: t.css, js: t.js,
+        };
+      }
     }
     result.position = alerts.position || { x: 50, y: 20, width: 20, height: 15 };
     result.delay = alerts.delay ?? 3;

@@ -162,19 +162,30 @@
 
   async function playSound(filename) {
     if (!filename) return;
+    const url = filename.startsWith('http') ? filename : '/assets/' + filename;
     try {
-      // Get from cache or fetch+decode on the spot
+      // Try Web Audio API first
       if (!soundCache[filename]) {
         soundCache[filename] = await fetchAndDecodeSound(filename);
       }
       const buffer = soundCache[filename];
       const ctx = getAudioContext();
+      if (ctx.state === 'suspended') {
+        // AudioContext is suspended (autoplay policy) — fall back to <audio> element
+        throw new Error('AudioContext suspended');
+      }
       const source = ctx.createBufferSource();
       source.buffer = buffer;
       source.connect(ctx.destination);
       source.start(0);
     } catch (e) {
-      console.warn('Sound playback failed:', filename, e);
+      // Fallback: use HTML <audio> element (works in OBS Browser Source and most contexts)
+      try {
+        const audio = new Audio(url);
+        audio.play();
+      } catch (e2) {
+        console.warn('Sound playback failed:', filename, e2);
+      }
     }
   }
 

@@ -327,7 +327,39 @@ class StreamerTools {
   async open() {
     if (!this.overlay) return;
     this.overlay.classList.remove('hidden');
+    await this._ensureScenes();
     await this._render();
+  }
+
+  // Ensure at least one scene exists, migrating old flat config if needed
+  async _ensureScenes() {
+    let scenes = await window.chatty.getConfig('overlay.scenes');
+    if (scenes && scenes.length > 0) return;
+
+    // Migrate from old flat config
+    const alerts = {};
+    for (const type of ['follow', 'subscribe', 'cheer', 'raid']) {
+      const val = await window.chatty.getConfig(`overlay.alerts.${type}`);
+      if (val) alerts[type] = val;
+    }
+    alerts.position = await window.chatty.getConfig('overlay.alerts.position') || null;
+    alerts.delay = (await window.chatty.getConfig('overlay.alerts.delay')) ?? 3;
+
+    const chat = {
+      enabled: (await window.chatty.getConfig('overlay.chat.enabled')) ?? true,
+      showBadges: (await window.chatty.getConfig('overlay.chat.showBadges')) ?? true,
+      showTimestamps: (await window.chatty.getConfig('overlay.chat.showTimestamps')) ?? false,
+      fontSize: (await window.chatty.getConfig('overlay.chat.fontSize')) || 16,
+      maxMessages: (await window.chatty.getConfig('overlay.chat.maxMessages')) || 6,
+      fadeOut: (await window.chatty.getConfig('overlay.chat.fadeOut')) ?? true,
+      fadeDelay: (await window.chatty.getConfig('overlay.chat.fadeDelay')) || 30,
+      animation: (await window.chatty.getConfig('overlay.chat.animation')) || 'slideIn',
+      position: (await window.chatty.getConfig('overlay.chat.position')) || null,
+      css: (await window.chatty.getConfig('overlay.chat.css')) || '',
+    };
+
+    scenes = [{ name: 'Default', alerts, chat }];
+    await window.chatty.setConfig('overlay.scenes', scenes);
   }
 
   close() {
