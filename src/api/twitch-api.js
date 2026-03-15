@@ -238,6 +238,15 @@ class TwitchAPI {
     }
   }
 
+  async sendWhisper(fromUserId, toUserId, message) {
+    try {
+      await this._post('/whispers', { from_user_id: fromUserId, to_user_id: toUserId }, { message });
+      return { success: true };
+    } catch (err) {
+      return { error: err.message };
+    }
+  }
+
   // ── Moderators & VIPs ──
 
   async getModerators(broadcasterId, first = 100) {

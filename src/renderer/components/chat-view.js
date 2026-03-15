@@ -19,6 +19,7 @@ class ChatView {
     this.users = new Map(); // username -> { displayName, username, badges, color, lastSeen }
     this.userMessages = new Map(); // username -> [{ displayName, message, timestamp }]
     this.onUsersChanged = null;
+    this.onRoomState = null; // callback({ followersOnly, subsOnly, emoteOnly })
     this._removeListener = null;
     this._emotesReady = false;
     this._profileCardUsername = null;
@@ -167,7 +168,13 @@ class ChatView {
         if (el) el.remove();
       }
     } else if (command === 'ROOMSTATE') {
-      // Could show sub-only, emote-only, etc.
+      if (this.onRoomState) {
+        const state = {};
+        if (tags['followers-only'] !== undefined) state.followersOnly = parseInt(tags['followers-only']) >= 0;
+        if (tags['subs-only'] !== undefined) state.subsOnly = tags['subs-only'] === '1';
+        if (tags['emote-only'] !== undefined) state.emoteOnly = tags['emote-only'] === '1';
+        this.onRoomState(state);
+      }
     } else if (command === 'NOTICE') {
       this.addSystemMessage(message || '');
     }

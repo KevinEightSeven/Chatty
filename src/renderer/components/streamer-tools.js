@@ -6,11 +6,12 @@ class StreamerTools {
   constructor() {
     this.overlay = document.getElementById('streamer-tools-overlay');
     this.closeBtn = document.getElementById('streamer-tools-close');
-    this._activeTab = 'scenes';
-    this._editingSceneIdx = null;
+    this._activeTab = 'alerts';
     this._previewResolution = { w: 1920, h: 1080, label: '1080p' };
     this._dragTarget = null;
     this._dragOffset = { x: 0, y: 0 };
+    this._selectedAlertType = 'follow';
+    this._selectedVariantIdx = null;
 
     if (this.closeBtn) {
       this.closeBtn.addEventListener('click', () => this.close());
@@ -20,47 +21,11 @@ class StreamerTools {
   async open() {
     if (!this.overlay) return;
     this.overlay.classList.remove('hidden');
-    await this._ensureScenes();
     await this._render();
-  }
-
-  // Ensure at least one scene exists, migrating old flat config if needed
-  async _ensureScenes() {
-    let scenes = await window.chatty.getConfig('overlay.scenes');
-    if (scenes && scenes.length > 0) return;
-
-    // Migrate from old flat config
-    const alerts = {};
-    for (const type of ['follow', 'subscribe', 'cheer', 'raid']) {
-      const val = await window.chatty.getConfig(`overlay.alerts.${type}`);
-      if (val) alerts[type] = val;
-    }
-    alerts.position = await window.chatty.getConfig('overlay.alerts.position') || null;
-    alerts.delay = (await window.chatty.getConfig('overlay.alerts.delay')) ?? 3;
-
-    const chat = {
-      enabled: (await window.chatty.getConfig('overlay.chat.enabled')) ?? true,
-      showBadges: (await window.chatty.getConfig('overlay.chat.showBadges')) ?? true,
-      showTimestamps: (await window.chatty.getConfig('overlay.chat.showTimestamps')) ?? false,
-      fontSize: (await window.chatty.getConfig('overlay.chat.fontSize')) || 16,
-      maxMessages: (await window.chatty.getConfig('overlay.chat.maxMessages')) || 6,
-      fadeOut: (await window.chatty.getConfig('overlay.chat.fadeOut')) ?? true,
-      fadeDelay: (await window.chatty.getConfig('overlay.chat.fadeDelay')) || 30,
-      animation: (await window.chatty.getConfig('overlay.chat.animation')) || 'slideIn',
-      position: (await window.chatty.getConfig('overlay.chat.position')) || null,
-      css: (await window.chatty.getConfig('overlay.chat.css')) || '',
-    };
-
-    scenes = [{ name: 'Default', alerts, chat }];
-    await window.chatty.setConfig('overlay.scenes', scenes);
   }
 
   close() {
     if (this.overlay) this.overlay.classList.add('hidden');
-  }
-
-  _sceneSuffix() {
-    return this._editingSceneIdx === 0 ? '' : String(this._editingSceneIdx + 1);
   }
 
   async _render() {
@@ -70,33 +35,11 @@ class StreamerTools {
     const serverRunning = await window.chatty.overlayIsRunning();
     const port = await window.chatty.getConfig('overlay.port') || 7878;
 
-    let tabsHtml;
-    let panelsHtml;
-
-    if (this._editingSceneIdx !== null) {
-      const scenes = await window.chatty.getConfig('overlay.scenes') || [];
-      const sceneName = scenes[this._editingSceneIdx]?.name || `Scene ${this._editingSceneIdx + 1}`;
-
-      tabsHtml = `
-        <button class="st-tab st-back-tab" data-tab="scenes">\u2190 Scenes</button>
-        <button class="st-tab ${this._activeTab === 'alerts' ? 'active' : ''}" data-tab="alerts">Alerts</button>
-        <button class="st-tab ${this._activeTab === 'chat' ? 'active' : ''}" data-tab="chat">Chat Overlay</button>
-        <button class="st-tab ${this._activeTab === 'preview' ? 'active' : ''}" data-tab="preview">Position Preview</button>
-      `;
-      panelsHtml = `
-        <div class="st-scene-edit-header">
-          <label>Scene Name</label>
-          <input type="text" id="st-scene-name" value="${this._escapeHtml(sceneName)}">
-        </div>
-        <div class="st-panel ${this._activeTab === 'alerts' ? 'active' : ''}" id="st-alerts-panel"></div>
-        <div class="st-panel ${this._activeTab === 'chat' ? 'active' : ''}" id="st-chat-panel"></div>
-        <div class="st-panel ${this._activeTab === 'preview' ? 'active' : ''}" id="st-preview-panel"></div>
-      `;
-    } else {
-      tabsHtml = `<button class="st-tab active" data-tab="scenes">Scenes</button>`;
-      panelsHtml = `<div class="st-panel active" id="st-scenes-panel"></div>`;
-      this._activeTab = 'scenes';
-    }
+    const tabsHtml = `
+      <button class="st-tab ${this._activeTab === 'alerts' ? 'active' : ''}" data-tab="alerts">Alerts</button>
+      <button class="st-tab ${this._activeTab === 'chat' ? 'active' : ''}" data-tab="chat">Chat Overlay</button>
+      <button class="st-tab ${this._activeTab === 'preview' ? 'active' : ''}" data-tab="preview">Position Preview</button>
+    `;
 
     body.innerHTML = `
       <div class="st-server-bar">
@@ -120,41 +63,24 @@ class StreamerTools {
       </div>
 
       <div class="st-content">
-        ${panelsHtml}
+        <div class="st-panel ${this._activeTab === 'alerts' ? 'active' : ''}" id="st-alerts-panel"></div>
+        <div class="st-panel ${this._activeTab === 'chat' ? 'active' : ''}" id="st-chat-panel"></div>
+        <div class="st-panel ${this._activeTab === 'preview' ? 'active' : ''}" id="st-preview-panel"></div>
       </div>
     `;
 
     // Tab switching
     body.querySelectorAll('.st-tab').forEach(tab => {
       tab.addEventListener('click', async () => {
-        if (tab.dataset.tab === 'scenes' && tab.classList.contains('st-back-tab')) {
-          // Save scene name before going back
-          const nameInput = document.getElementById('st-scene-name');
-          if (nameInput) {
-            const scenes = await window.chatty.getConfig('overlay.scenes') || [];
-            if (scenes[this._editingSceneIdx]) {
-              scenes[this._editingSceneIdx].name = nameInput.value || `Scene ${this._editingSceneIdx + 1}`;
-              await window.chatty.setConfig('overlay.scenes', scenes);
-            }
-          }
-          this._editingSceneIdx = null;
-          this._activeTab = 'scenes';
-          await this._render();
-          return;
-        }
-
         this._activeTab = tab.dataset.tab;
         body.querySelectorAll('.st-tab').forEach(t => {
-          if (!t.classList.contains('st-back-tab')) {
-            t.classList.toggle('active', t.dataset.tab === this._activeTab);
-          }
+          t.classList.toggle('active', t.dataset.tab === this._activeTab);
         });
         body.querySelectorAll('.st-panel').forEach(p => p.classList.remove('active'));
         const activePanel = body.querySelector(`#st-${this._activeTab}-panel`);
         if (activePanel) activePanel.classList.add('active');
 
-        if (this._activeTab === 'scenes') await this._renderScenes();
-        else if (this._activeTab === 'alerts') await this._renderAlerts();
+        if (this._activeTab === 'alerts') await this._renderAlerts();
         else if (this._activeTab === 'chat') await this._renderChat();
         else if (this._activeTab === 'preview') await this._renderPreview();
       });
@@ -164,7 +90,6 @@ class StreamerTools {
     document.getElementById('st-toggle-server').addEventListener('click', async () => {
       const portVal = parseInt(document.getElementById('st-port').value) || 7878;
       await window.chatty.setConfig('overlay.port', portVal);
-
       if (serverRunning) {
         await window.chatty.overlayStop();
       } else {
@@ -174,120 +99,9 @@ class StreamerTools {
     });
 
     // Render active tab content
-    if (this._activeTab === 'scenes') await this._renderScenes();
-    else if (this._activeTab === 'alerts') await this._renderAlerts();
+    if (this._activeTab === 'alerts') await this._renderAlerts();
     else if (this._activeTab === 'chat') await this._renderChat();
     else if (this._activeTab === 'preview') await this._renderPreview();
-  }
-
-  // ── Scenes Tab ──
-
-  async _renderScenes() {
-    const panel = document.getElementById('st-scenes-panel');
-    if (!panel) return;
-
-    const serverRunning = await window.chatty.overlayIsRunning();
-    const port = await window.chatty.getConfig('overlay.port') || 7878;
-    let scenes = await window.chatty.getConfig('overlay.scenes') || [];
-
-    // Ensure at least one scene exists
-    if (scenes.length === 0) {
-      scenes = [{ name: 'Default' }];
-      await window.chatty.setConfig('overlay.scenes', scenes);
-    }
-
-    let html = '<p class="form-hint" style="margin-bottom:12px;">Each scene has its own alerts, chat overlay, and position settings. Add each scene as a separate Browser Source in OBS.</p>';
-
-    scenes.forEach((scene, idx) => {
-      const suffix = idx === 0 ? '' : (idx + 1);
-      const alertUrl = `http://127.0.0.1:${port}/alerts${suffix}`;
-      const chatUrl = `http://127.0.0.1:${port}/chat${suffix}`;
-
-      html += `
-        <div class="st-alert-card" data-scene-idx="${idx}">
-          <div class="st-alert-header">
-            <input type="text" class="st-scene-name-input" data-scene-idx="${idx}" value="${this._escapeHtml(scene.name || `Scene ${idx + 1}`)}" spellcheck="false">
-            <div style="display:flex;gap:6px;">
-              <button class="st-scene-edit btn-primary" data-scene-idx="${idx}" style="width:auto;padding:4px 12px;font-size:12px;">Edit</button>
-              ${scenes.length > 1 ? `<button class="st-scene-delete st-reset-btn" data-scene-idx="${idx}" style="width:auto;padding:4px 12px;font-size:12px;">Delete</button>` : ''}
-            </div>
-          </div>
-          <div class="st-alert-body">`;
-
-      if (serverRunning) {
-        html += `
-            <div class="st-url-bar" style="margin-bottom:4px;">
-              <span>Alerts:</span>
-              <code>${alertUrl}</code>
-              <button class="st-copy-btn" data-copy="${alertUrl}" title="Copy URL">Copy</button>
-            </div>
-            <div class="st-url-bar">
-              <span>Chat:</span>
-              <code>${chatUrl}</code>
-              <button class="st-copy-btn" data-copy="${chatUrl}" title="Copy URL">Copy</button>
-            </div>`;
-      } else {
-        html += '<p class="form-hint">Start the server to see overlay URLs.</p>';
-      }
-
-      html += `</div></div>`;
-    });
-
-    html += `<div class="st-section" style="margin-top:12px;">
-      <button id="st-add-scene" class="st-add-variant" style="width:auto;padding:8px 16px;">+ Add Scene</button>
-    </div>`;
-
-    panel.innerHTML = html;
-
-    // Wire copy buttons
-    panel.querySelectorAll('.st-copy-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        navigator.clipboard.writeText(btn.dataset.copy);
-        btn.textContent = 'Copied!';
-        setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
-      });
-    });
-
-    // Wire scene name inputs
-    panel.querySelectorAll('.st-scene-name-input').forEach(input => {
-      input.addEventListener('change', async () => {
-        const idx = parseInt(input.dataset.sceneIdx);
-        const scenes = await window.chatty.getConfig('overlay.scenes') || [];
-        if (scenes[idx]) {
-          scenes[idx].name = input.value || `Scene ${idx + 1}`;
-          await window.chatty.setConfig('overlay.scenes', scenes);
-        }
-      });
-    });
-
-    // Wire edit buttons
-    panel.querySelectorAll('.st-scene-edit').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        this._editingSceneIdx = parseInt(btn.dataset.sceneIdx);
-        this._activeTab = 'alerts';
-        await this._render();
-      });
-    });
-
-    // Wire delete buttons
-    panel.querySelectorAll('.st-scene-delete').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const idx = parseInt(btn.dataset.sceneIdx);
-        const scenes = await window.chatty.getConfig('overlay.scenes') || [];
-        if (scenes.length <= 1) return;
-        scenes.splice(idx, 1);
-        await window.chatty.setConfig('overlay.scenes', scenes);
-        await this._renderScenes();
-      });
-    });
-
-    // Add scene
-    document.getElementById('st-add-scene')?.addEventListener('click', async () => {
-      const scenes = await window.chatty.getConfig('overlay.scenes') || [];
-      scenes.push({ name: `Scene ${scenes.length + 1}` });
-      await window.chatty.setConfig('overlay.scenes', scenes);
-      await this._renderScenes();
-    });
   }
 
   // ── Alerts Tab ──
@@ -308,163 +122,20 @@ class StreamerTools {
       </div>`;
   }
 
-  // Generate HTML for a single variant card
-  _variantCardHtml(type, idx, variant) {
-    const v = variant || {};
-    const image = v.image || '';
-    const sound = v.sound || '';
-    const text = v.text || '';
-    const duration = v.duration || 0;
-    const animation = v.animation || '';
-    const fontSize = v.fontSize || 0;
-    const fontColor = v.fontColor || '';
-
-    const vLayout = v.layout || '';
-    const vHtml = v.html || '';
-    const vCss = v.css || '';
-    const vJs = v.js || '';
-
-    const animOptions = ['fadeIn', 'slideDown', 'slideUp', 'bounceIn', 'zoomIn'];
-
-    // Condition/threshold row per type
-    let conditionHtml = '';
-    let textHint = '{user}';
-    if (type === 'subscribe') {
-      const condition = v.condition || 'resub';
-      textHint = '{user} {months} {tier}';
-      conditionHtml = `
-        <div class="st-form-row" style="margin:0;flex:0 0 auto;">
-          <label style="margin:0;font-size:11px;">Condition</label>
-          <select class="st-variant-condition" style="width:auto;">
-            <option value="resub" ${condition === 'resub' ? 'selected' : ''}>Resub</option>
-            <option value="gifted" ${condition === 'gifted' ? 'selected' : ''}>Gifted Sub</option>
-          </select>
-        </div>
-        <input type="text" class="st-variant-label" value="${this._escapeHtml(v.label || '')}" placeholder="Variant name" style="flex:1;">`;
-    } else if (type === 'cheer') {
-      textHint = '{user} {amount}';
-      conditionHtml = `
-        <div class="st-form-row" style="margin:0;flex:0 0 auto;">
-          <label style="margin:0;font-size:11px;">Min Bits</label>
-          <input type="number" class="st-variant-threshold" value="${v.threshold || 100}" min="1" style="width:80px;">
-        </div>
-        <input type="text" class="st-variant-label" value="${this._escapeHtml(v.label || '')}" placeholder="Variant name" style="flex:1;">`;
-    } else if (type === 'raid') {
-      textHint = '{user} {viewers}';
-      conditionHtml = `
-        <div class="st-form-row" style="margin:0;flex:0 0 auto;">
-          <label style="margin:0;font-size:11px;">Min Viewers</label>
-          <input type="number" class="st-variant-threshold" value="${v.threshold || 50}" min="1" style="width:80px;">
-        </div>
-        <input type="text" class="st-variant-label" value="${this._escapeHtml(v.label || '')}" placeholder="Variant name" style="flex:1;">`;
-    }
-
-    return `
-      <div class="st-variant-card" data-type="${type}" data-variant-idx="${idx}">
-        <div class="st-variant-header">
-          ${conditionHtml}
-          <button class="st-variant-remove" data-type="${type}" data-variant-idx="${idx}">Remove</button>
-        </div>
-        <p class="form-hint" style="margin-bottom:6px;">Leave fields empty to use the base alert values.</p>
-        <div class="st-form-row">
-          <label>Image</label>
-          <div class="st-file-row">
-            <input type="text" class="st-variant-image" value="${this._escapeHtml(image)}" placeholder="Inherit from base" readonly>
-            <button class="st-upload-btn st-variant-upload" data-field="image" data-variant-idx="${idx}" data-type="${type}">Upload</button>
-            ${image ? `<button class="st-clear-btn st-variant-clear" data-field="image" data-variant-idx="${idx}" data-type="${type}">Clear</button>` : ''}
-          </div>
-        </div>
-        <div class="st-form-row">
-          <label>Sound <span class="form-hint">(.mp3 or .ogg)</span></label>
-          <div class="st-file-row">
-            <input type="text" class="st-variant-sound" value="${this._escapeHtml(sound)}" placeholder="Inherit from base" readonly>
-            <button class="st-upload-btn st-variant-upload" data-field="sound" data-variant-idx="${idx}" data-type="${type}">Upload</button>
-            ${sound ? `<button class="st-clear-btn st-variant-clear" data-field="sound" data-variant-idx="${idx}" data-type="${type}">Clear</button>` : ''}
-          </div>
-        </div>
-        <div class="st-form-row">
-          <label>Text <span class="form-hint">${textHint}</span></label>
-          <input type="text" class="st-variant-text" value="${this._escapeHtml(text)}" placeholder="Inherit from base">
-        </div>
-        <div class="st-form-row">
-          <label>Text Layout</label>
-          <div class="st-layout-picker st-variant-layout-picker">
-            <button class="st-layout-btn ${vLayout === 'overlay' ? 'active' : ''}" data-layout="overlay" title="Text centered on image">
-              <svg width="28" height="22" viewBox="0 0 28 22"><rect x="1" y="1" width="26" height="20" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="4" y="4" width="20" height="14" rx="1" fill="currentColor" opacity="0.15"/><line x1="8" y1="11" x2="20" y2="11" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-              <span>Overlay</span>
-            </button>
-            <button class="st-layout-btn ${vLayout === 'below' ? 'active' : ''}" data-layout="below" title="Text below image">
-              <svg width="28" height="22" viewBox="0 0 28 22"><rect x="1" y="1" width="26" height="20" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="8" y="3" width="12" height="10" rx="1" fill="currentColor" opacity="0.15"/><line x1="7" y1="17" x2="21" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-              <span>Below</span>
-            </button>
-            <button class="st-layout-btn ${vLayout === 'side' ? 'active' : ''}" data-layout="side" title="Text beside image">
-              <svg width="28" height="22" viewBox="0 0 28 22"><rect x="1" y="1" width="26" height="20" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="3" y="4" width="10" height="14" rx="1" fill="currentColor" opacity="0.15"/><line x1="16" y1="9" x2="25" y2="9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="16" y1="13" x2="22" y2="13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/></svg>
-              <span>Side</span>
-            </button>
-            <button class="st-layout-btn ${!vLayout ? 'active' : ''}" data-layout="" title="Inherit from base">
-              <span>Inherit</span>
-            </button>
-          </div>
-        </div>
-        <div class="st-form-grid">
-          <div class="st-form-row">
-            <label>Duration (s)</label>
-            <input type="number" class="st-variant-duration" value="${duration}" min="0" max="30" step="1" placeholder="0 = inherit">
-          </div>
-          <div class="st-form-row">
-            <label>Animation</label>
-            <select class="st-variant-animation">
-              <option value="" ${!animation ? 'selected' : ''}>Inherit</option>
-              ${animOptions.map(a => `<option value="${a}" ${animation === a ? 'selected' : ''}>${a.replace(/([A-Z])/g, ' $1').trim()}</option>`).join('')}
-            </select>
-          </div>
-          <div class="st-form-row">
-            <label>Font Size</label>
-            <input type="number" class="st-variant-font-size" value="${fontSize}" min="0" max="72" step="1" placeholder="0 = inherit">
-          </div>
-          <div class="st-form-row">
-            <label>Font Color</label>
-            <input type="color" class="st-variant-font-color" value="${fontColor || '#ffffff'}">
-          </div>
-        </div>
-        ${this._codeEditorHtml(`variant-${type}-${idx}`, vHtml, vCss, vJs)}
-        <div class="st-form-row">
-          <button class="st-test-btn st-test-variant-btn" data-type="${type}" data-variant-idx="${idx}">Test Variant</button>
-        </div>
-      </div>
-    `;
-  }
-
   async _renderAlerts() {
     const panel = document.getElementById('st-alerts-panel');
     if (!panel) return;
 
     const serverRunning = await window.chatty.overlayIsRunning();
     const port = await window.chatty.getConfig('overlay.port') || 7878;
-    const scenes = await window.chatty.getConfig('overlay.scenes') || [];
-    const scene = scenes[this._editingSceneIdx] || {};
-    const sceneAlerts = scene.alerts || {};
+    const sceneAlerts = await window.chatty.getConfig('overlay.alerts') || {};
 
     const types = ['follow', 'subscribe', 'cheer', 'raid'];
     const labels = { follow: 'Followers', subscribe: 'Subscribers', cheer: 'Bits', raid: 'Raids' };
     const icons = { follow: '\u2764', subscribe: '\u2B50', cheer: '\uD83D\uDC8E', raid: '\uD83D\uDEA8' };
-    const defaultTexts = {
-      follow: '{user} just followed!',
-      subscribe: '{user} just subscribed!',
-      cheer: '{user} cheered {amount} bits!',
-      raid: '{user} is raiding with {viewers} viewers!',
-    };
-    const textHints = {
-      follow: '{user}',
-      subscribe: '{user} {months} {tier}',
-      cheer: '{user} {amount}',
-      raid: '{user} {viewers}',
-    };
-    // Types that support variants
     const variantTypes = { subscribe: true, cheer: true, raid: true };
 
-    const suffix = this._sceneSuffix();
-    const alertUrl = `http://127.0.0.1:${port}/alerts${suffix}`;
+    const alertUrl = `http://127.0.0.1:${port}/alerts`;
     let html = '';
 
     if (serverRunning) {
@@ -486,134 +157,45 @@ class StreamerTools {
       </div>
     </div>`;
 
+    // Tree sidebar + detail panel layout
+    html += `<div class="st-alerts-layout">`;
+
+    // Left: Tree sidebar
+    html += `<div class="st-alerts-tree">`;
     for (const type of types) {
       const cfg = sceneAlerts[type] || {};
       const enabled = cfg.enabled ?? true;
-      const image = cfg.image || '';
-      const sound = cfg.sound || '';
-      const text = cfg.text || defaultTexts[type];
-      const duration = cfg.duration || 8;
-      const animation = cfg.animation || 'fadeIn';
-      const fontSize = cfg.fontSize || 32;
-      const fontColor = cfg.fontColor || '#ffffff';
-      const layout = cfg.layout || 'below';
-      const css = cfg.css || '';
-      const alertHtml = cfg.html || '';
-      const alertJs = cfg.js || '';
-      const variants = cfg.variants || [];
+      const isActive = this._selectedAlertType === type && this._selectedVariantIdx === null;
 
-      const baseLabel = type === 'subscribe' ? 'New Subscriber' : (type === 'cheer' ? 'Any Amount' : (type === 'raid' ? 'Any Raid' : ''));
+      html += `<div class="st-tree-item${isActive ? ' active' : ''}" data-type="${type}" data-vidx="-1">
+        <span class="st-tree-icon">${icons[type]}</span>
+        <span class="st-tree-label">${labels[type]}</span>
+        <span class="st-tree-status ${enabled ? 'on' : 'off'}">${enabled ? 'ON' : 'OFF'}</span>
+      </div>`;
 
-      html += `
-        <div class="st-alert-card" data-type="${type}">
-          <div class="st-alert-header">
-            <span class="st-alert-icon">${icons[type]}</span>
-            <span class="st-alert-label">${labels[type]}</span>
-            <label class="st-toggle">
-              <input type="checkbox" class="st-alert-enabled" data-type="${type}" ${enabled ? 'checked' : ''}>
-              <span class="st-toggle-slider"></span>
-            </label>
-          </div>
-          <div class="st-alert-body">
-            ${variantTypes[type] ? `<div class="st-base-label">Base Alert${baseLabel ? ' — ' + baseLabel : ''}</div>` : ''}
-            <div class="st-form-row">
-              <label>Alert Image</label>
-              <div class="st-file-row">
-                <input type="text" class="st-alert-image" data-type="${type}" value="${this._escapeHtml(image)}" placeholder="No image set" readonly>
-                <button class="st-upload-btn" data-type="${type}" data-field="image">Upload</button>
-                ${image ? `<button class="st-clear-btn" data-type="${type}" data-field="image">Clear</button>` : ''}
-              </div>
-            </div>
-            <div class="st-form-row">
-              <label>Alert Sound <span class="form-hint">(.mp3 or .ogg)</span></label>
-              <div class="st-file-row">
-                <input type="text" class="st-alert-sound" data-type="${type}" value="${this._escapeHtml(sound)}" placeholder="No sound set" readonly>
-                <button class="st-upload-btn" data-type="${type}" data-field="sound">Upload</button>
-                ${sound ? `<button class="st-clear-btn" data-type="${type}" data-field="sound">Clear</button>` : ''}
-              </div>
-            </div>
-            <div class="st-form-row">
-              <label>Alert Text <span class="form-hint">${textHints[type]}</span></label>
-              <input type="text" class="st-alert-text" data-type="${type}" value="${this._escapeHtml(text)}">
-            </div>
-            <div class="st-form-row">
-              <label>Text Layout</label>
-              <div class="st-layout-picker" data-type="${type}">
-                <button class="st-layout-btn ${layout === 'overlay' ? 'active' : ''}" data-layout="overlay" title="Text centered on image">
-                  <svg width="28" height="22" viewBox="0 0 28 22"><rect x="1" y="1" width="26" height="20" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="4" y="4" width="20" height="14" rx="1" fill="currentColor" opacity="0.15"/><line x1="8" y1="11" x2="20" y2="11" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-                  <span>Overlay</span>
-                </button>
-                <button class="st-layout-btn ${layout === 'below' ? 'active' : ''}" data-layout="below" title="Text below image">
-                  <svg width="28" height="22" viewBox="0 0 28 22"><rect x="1" y="1" width="26" height="20" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="8" y="3" width="12" height="10" rx="1" fill="currentColor" opacity="0.15"/><line x1="7" y1="17" x2="21" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-                  <span>Below</span>
-                </button>
-                <button class="st-layout-btn ${layout === 'side' ? 'active' : ''}" data-layout="side" title="Text beside image">
-                  <svg width="28" height="22" viewBox="0 0 28 22"><rect x="1" y="1" width="26" height="20" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="3" y="4" width="10" height="14" rx="1" fill="currentColor" opacity="0.15"/><line x1="16" y1="9" x2="25" y2="9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="16" y1="13" x2="22" y2="13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/></svg>
-                  <span>Side</span>
-                </button>
-              </div>
-            </div>
-            <div class="st-form-grid">
-              <div class="st-form-row">
-                <label>Duration (s)</label>
-                <input type="number" class="st-alert-duration" data-type="${type}" value="${duration}" min="1" max="30" step="1">
-              </div>
-              <div class="st-form-row">
-                <label>Animation</label>
-                <select class="st-alert-animation" data-type="${type}">
-                  <option value="fadeIn" ${animation === 'fadeIn' ? 'selected' : ''}>Fade In</option>
-                  <option value="slideDown" ${animation === 'slideDown' ? 'selected' : ''}>Slide Down</option>
-                  <option value="slideUp" ${animation === 'slideUp' ? 'selected' : ''}>Slide Up</option>
-                  <option value="bounceIn" ${animation === 'bounceIn' ? 'selected' : ''}>Bounce In</option>
-                  <option value="zoomIn" ${animation === 'zoomIn' ? 'selected' : ''}>Zoom In</option>
-                </select>
-              </div>
-              <div class="st-form-row">
-                <label>Font Size</label>
-                <input type="number" class="st-alert-font-size" data-type="${type}" value="${fontSize}" min="12" max="72" step="1">
-              </div>
-              <div class="st-form-row">
-                <label>Font Color</label>
-                <input type="color" class="st-alert-font-color" data-type="${type}" value="${fontColor}">
-              </div>
-            </div>
-            ${this._codeEditorHtml(`base-${type}`, alertHtml, css, alertJs)}
-            <div class="st-form-row">
-              <button class="st-test-btn" data-type="${type}">Test Alert</button>
-            </div>
-      `;
-
-      // Variant section for subscribe, cheer, raid
       if (variantTypes[type]) {
-        const variantHint = type === 'subscribe'
-          ? 'Add variants for resubs, gifted subs, etc. The first matching variant is used. Empty fields inherit from base.'
-          : type === 'cheer'
-            ? 'Add threshold variants — the highest matching bit amount is used. Empty fields inherit from base.'
-            : 'Add threshold variants — the highest matching viewer count is used. Empty fields inherit from base.';
-
-        html += `
-            <div class="st-variants-section" data-type="${type}">
-              <div class="st-variants-header">
-                <h5>Variants</h5>
-                <p class="form-hint">${variantHint}</p>
-              </div>
-              <div class="st-variants-list" data-type="${type}">
-        `;
-
+        const variants = cfg.variants || [];
+        html += `<div class="st-tree-children">`;
         variants.forEach((v, i) => {
-          html += this._variantCardHtml(type, i, v);
+          const vActive = this._selectedAlertType === type && this._selectedVariantIdx === i;
+          const vEnabled = v.enabled ?? true;
+          html += `<div class="st-tree-item st-tree-variant${vActive ? ' active' : ''}" data-type="${type}" data-vidx="${i}">
+            <span class="st-tree-label">${this._escapeHtml(v.label || 'Variant ' + (i + 1))}</span>
+            <span class="st-tree-status ${vEnabled ? 'on' : 'off'}">${vEnabled ? 'ON' : 'OFF'}</span>
+          </div>`;
         });
-
-        html += `</div>`;
-        html += `<button class="st-add-variant" data-type="${type}">+ Add Variant</button>`;
+        html += `<button class="st-tree-add" data-type="${type}">+ Add Variation</button>`;
         html += `</div>`;
       }
-
-      html += `
-          </div>
-        </div>
-      `;
     }
+    html += `</div>`;
+
+    // Right: Detail panel
+    html += `<div class="st-alerts-detail" id="st-alerts-detail">`;
+    html += this._buildAlertDetailHtml(sceneAlerts);
+    html += `</div>`;
+
+    html += `</div>`; // close st-alerts-layout
 
     html += `<div class="st-section" style="margin-top:12px;display:flex;gap:10px;align-items:center;">
       <button id="st-save-alerts" class="btn-primary" style="width:auto;padding:8px 24px;">Save Alert Settings</button>
@@ -622,6 +204,179 @@ class StreamerTools {
 
     panel.innerHTML = html;
     this._wireAlertsPanel(panel);
+  }
+
+  _buildAlertDetailHtml(sceneAlerts) {
+    const type = this._selectedAlertType;
+    const vidx = this._selectedVariantIdx;
+    const labels = { follow: 'Followers', subscribe: 'Subscribers', cheer: 'Bits', raid: 'Raids' };
+    const defaultTexts = {
+      follow: '{user} just followed!',
+      subscribe: '{user} just subscribed!',
+      cheer: '{user} cheered {amount} bits!',
+      raid: '{user} is raiding with {viewers} viewers!',
+    };
+    const textHints = {
+      follow: '{user}',
+      subscribe: '{user} {months} {tier}',
+      cheer: '{user} {amount}',
+      raid: '{user} {viewers}',
+    };
+    const animOptions = ['fadeIn', 'slideDown', 'slideUp', 'bounceIn', 'zoomIn'];
+
+    const baseCfg = sceneAlerts[type] || {};
+    const isVariant = vidx !== null;
+    const cfg = isVariant ? (baseCfg.variants || [])[vidx] || {} : baseCfg;
+
+    const enabled = cfg.enabled ?? true;
+    const image = cfg.image || '';
+    const sound = cfg.sound || '';
+    const text = isVariant ? (cfg.text || '') : (cfg.text || defaultTexts[type]);
+    const duration = isVariant ? (cfg.duration || 0) : (cfg.duration || 8);
+    const animation = isVariant ? (cfg.animation || '') : (cfg.animation || 'fadeIn');
+    const fontSize = isVariant ? (cfg.fontSize || 0) : (cfg.fontSize || 32);
+    const fontColor = cfg.fontColor || '#ffffff';
+    const layout = isVariant ? (cfg.layout || '') : (cfg.layout || 'below');
+    const alertHtml = cfg.html || '';
+    const alertCss = cfg.css || '';
+    const alertJs = cfg.js || '';
+
+    const placeholderText = isVariant ? 'Inherit from base' : 'No file set';
+
+    let html = `<div class="st-detail-header">`;
+
+    if (isVariant) {
+      html += `<input type="text" id="st-detail-label" class="st-detail-label-input" value="${this._escapeHtml(cfg.label || 'Variant ' + (vidx + 1))}">`;
+    } else {
+      html += `<h3>${labels[type]}</h3>`;
+    }
+
+    html += `<label class="st-toggle">
+        <input type="checkbox" id="st-detail-enabled" ${enabled ? 'checked' : ''}>
+        <span class="st-toggle-slider"></span>
+      </label>`;
+
+    if (isVariant) {
+      html += `<button id="st-detail-delete" class="st-detail-delete-btn" title="Delete variant">Delete</button>`;
+    }
+
+    html += `</div>`;
+
+    html += `<div class="st-detail-body">`;
+
+    // Condition/threshold for variants
+    if (isVariant) {
+      if (type === 'subscribe') {
+        const condition = cfg.condition || 'resub';
+        const thresholdLabel = condition === 'gifted' ? 'Min Gifts' : 'Min Months';
+        html += `<div class="st-form-grid">
+          <div class="st-form-row">
+            <label>Condition</label>
+            <select id="st-detail-condition">
+              <option value="resub" ${condition === 'resub' ? 'selected' : ''}>Resubscription</option>
+              <option value="gifted" ${condition === 'gifted' ? 'selected' : ''}>Gifted Sub</option>
+            </select>
+          </div>
+          <div class="st-form-row">
+            <label id="st-detail-threshold-label">${thresholdLabel}</label>
+            <input type="number" id="st-detail-threshold" value="${cfg.threshold || 0}" min="0">
+          </div>
+        </div>`;
+      } else if (type === 'cheer') {
+        html += `<div class="st-form-row">
+          <label>Min Bits</label>
+          <input type="number" id="st-detail-threshold" value="${cfg.threshold || 100}" min="0">
+        </div>`;
+      } else if (type === 'raid') {
+        html += `<div class="st-form-row">
+          <label>Min Viewers</label>
+          <input type="number" id="st-detail-threshold" value="${cfg.threshold || 50}" min="0">
+        </div>`;
+      }
+    }
+
+    // Image upload row
+    html += `<div class="st-form-row">
+      <label>Alert Image</label>
+      <div class="st-file-row">
+        <input type="text" id="st-detail-image" value="${this._escapeHtml(image)}" placeholder="${placeholderText}" readonly>
+        <button class="st-upload-btn" data-field="image">Upload</button>
+        ${image ? `<button class="st-clear-btn" data-field="image">Clear</button>` : ''}
+      </div>
+    </div>`;
+
+    // Sound upload row
+    html += `<div class="st-form-row">
+      <label>Alert Sound <span class="form-hint">(.mp3 or .ogg)</span></label>
+      <div class="st-file-row">
+        <input type="text" id="st-detail-sound" value="${this._escapeHtml(sound)}" placeholder="${placeholderText}" readonly>
+        <button class="st-upload-btn" data-field="sound">Upload</button>
+        ${sound ? `<button class="st-clear-btn" data-field="sound">Clear</button>` : ''}
+      </div>
+    </div>`;
+
+    // Alert text
+    html += `<div class="st-form-row">
+      <label>Alert Text <span class="form-hint">${textHints[type]}</span></label>
+      <input type="text" id="st-detail-text" value="${this._escapeHtml(text)}" placeholder="${isVariant ? 'Inherit from base' : ''}">
+    </div>`;
+
+    // Layout picker
+    html += `<div class="st-form-row">
+      <label>Text Layout</label>
+      <div class="st-layout-picker" id="st-detail-layout">
+        <button class="st-layout-btn ${layout === 'overlay' ? 'active' : ''}" data-layout="overlay" title="Text centered on image">
+          <svg width="28" height="22" viewBox="0 0 28 22"><rect x="1" y="1" width="26" height="20" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="4" y="4" width="20" height="14" rx="1" fill="currentColor" opacity="0.15"/><line x1="8" y1="11" x2="20" y2="11" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <span>Overlay</span>
+        </button>
+        <button class="st-layout-btn ${layout === 'below' ? 'active' : ''}" data-layout="below" title="Text below image">
+          <svg width="28" height="22" viewBox="0 0 28 22"><rect x="1" y="1" width="26" height="20" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="8" y="3" width="12" height="10" rx="1" fill="currentColor" opacity="0.15"/><line x1="7" y1="17" x2="21" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <span>Below</span>
+        </button>
+        <button class="st-layout-btn ${layout === 'side' ? 'active' : ''}" data-layout="side" title="Text beside image">
+          <svg width="28" height="22" viewBox="0 0 28 22"><rect x="1" y="1" width="26" height="20" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="3" y="4" width="10" height="14" rx="1" fill="currentColor" opacity="0.15"/><line x1="16" y1="9" x2="25" y2="9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="16" y1="13" x2="22" y2="13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/></svg>
+          <span>Side</span>
+        </button>
+        ${isVariant ? `<button class="st-layout-btn ${!layout ? 'active' : ''}" data-layout="" title="Inherit from base">
+          <span>Inherit</span>
+        </button>` : ''}
+      </div>
+    </div>`;
+
+    // Grid: Duration, Animation, Font Size, Font Color
+    html += `<div class="st-form-grid">
+      <div class="st-form-row">
+        <label>Duration (s)</label>
+        <input type="number" id="st-detail-duration" value="${duration}" min="${isVariant ? 0 : 1}" max="30" step="1"${isVariant ? ' placeholder="0 = inherit"' : ''}>
+      </div>
+      <div class="st-form-row">
+        <label>Animation</label>
+        <select id="st-detail-animation">
+          ${isVariant ? `<option value="" ${!animation ? 'selected' : ''}>Inherit</option>` : ''}
+          ${animOptions.map(a => `<option value="${a}" ${animation === a ? 'selected' : ''}>${a.replace(/([A-Z])/g, ' $1').trim()}</option>`).join('')}
+        </select>
+      </div>
+      <div class="st-form-row">
+        <label>Font Size</label>
+        <input type="number" id="st-detail-font-size" value="${fontSize}" min="${isVariant ? 0 : 12}" max="72" step="1"${isVariant ? ' placeholder="0 = inherit"' : ''}>
+      </div>
+      <div class="st-form-row">
+        <label>Font Color</label>
+        <input type="color" id="st-detail-font-color" value="${fontColor}">
+      </div>
+    </div>`;
+
+    // Code editor
+    html += this._codeEditorHtml('detail', alertHtml, alertCss, alertJs);
+
+    // Test button
+    html += `<div class="st-form-row">
+      <button id="st-detail-test" class="st-test-btn">${isVariant ? 'Test Variant' : 'Test Alert'}</button>
+    </div>`;
+
+    html += `</div>`; // close st-detail-body
+
+    return html;
   }
 
   _wireAlertsPanel(panel) {
@@ -634,76 +389,155 @@ class StreamerTools {
       });
     });
 
-    // Upload buttons (base alerts)
-    panel.querySelectorAll('.st-upload-btn:not(.st-variant-upload)').forEach(btn => {
+    // Tree item clicks
+    panel.querySelectorAll('.st-tree-item').forEach(item => {
+      item.addEventListener('click', async () => {
+        await this._saveCurrentAlertDetail(panel);
+        this._selectedAlertType = item.dataset.type;
+        const vidx = parseInt(item.dataset.vidx);
+        this._selectedVariantIdx = vidx >= 0 ? vidx : null;
+        await this._renderAlerts();
+      });
+    });
+
+    // Add variation buttons
+    panel.querySelectorAll('.st-tree-add').forEach(btn => {
       btn.addEventListener('click', async () => {
+        await this._saveCurrentAlertDetail(panel);
         const type = btn.dataset.type;
-        const field = btn.dataset.field;
-        const filterType = field === 'sound' ? 'sound' : 'image';
-        const result = await window.chatty.overlayUploadAsset(filterType);
-        if (result && result.filename) {
-          const selector = field === 'sound' ? `.st-alert-sound[data-type="${type}"]` : `.st-alert-image[data-type="${type}"]`;
-          panel.querySelector(selector).value = result.filename;
+        const alerts = await window.chatty.getConfig('overlay.alerts') || {};
+        if (!alerts[type]) alerts[type] = {};
+        if (!alerts[type].variants) alerts[type].variants = [];
+
+        const baseCfg = alerts[type] || {};
+        let newVariant;
+        if (type === 'subscribe') {
+          newVariant = { enabled: true, condition: 'resub', threshold: 0, label: 'Resub', text: '{user} resubscribed for {months} months!', image: baseCfg.image || '', sound: baseCfg.sound || '' };
+        } else if (type === 'cheer') {
+          newVariant = { enabled: true, threshold: 100, label: '100+ Bits', text: '{user} cheered {amount} bits!', image: baseCfg.image || '', sound: baseCfg.sound || '' };
+        } else {
+          newVariant = { enabled: true, threshold: 50, label: '50+ Viewers', text: '{user} is raiding with {viewers} viewers!', image: baseCfg.image || '', sound: baseCfg.sound || '' };
+        }
+
+        alerts[type].variants.push(newVariant);
+        await window.chatty.setConfig('overlay.alerts', alerts);
+
+        this._selectedAlertType = type;
+        this._selectedVariantIdx = alerts[type].variants.length - 1;
+        await this._renderAlerts();
+      });
+    });
+
+    // Detail panel upload buttons
+    const detailPanel = panel.querySelector('#st-alerts-detail');
+    if (detailPanel) {
+      detailPanel.querySelectorAll('.st-upload-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const field = btn.dataset.field;
+          const filterType = field === 'sound' ? 'sound' : 'image';
+          const result = await window.chatty.overlayUploadAsset(filterType);
+          if (result && result.filename) {
+            const input = detailPanel.querySelector(field === 'sound' ? '#st-detail-sound' : '#st-detail-image');
+            input.value = result.filename;
+          }
+        });
+      });
+
+      // Detail panel clear buttons
+      detailPanel.querySelectorAll('.st-clear-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const field = btn.dataset.field;
+          const input = detailPanel.querySelector(field === 'sound' ? '#st-detail-sound' : '#st-detail-image');
+          input.value = '';
+          btn.remove();
+        });
+      });
+
+      // Delete variant button
+      detailPanel.querySelector('#st-detail-delete')?.addEventListener('click', async () => {
+        if (this._selectedVariantIdx === null) return;
+        const alerts = await window.chatty.getConfig('overlay.alerts') || {};
+        const type = this._selectedAlertType;
+        if (alerts[type]?.variants) {
+          alerts[type].variants.splice(this._selectedVariantIdx, 1);
+          await window.chatty.setConfig('overlay.alerts', alerts);
+        }
+        this._selectedVariantIdx = null;
+        await this._renderAlerts();
+      });
+
+      // Test button
+      detailPanel.querySelector('#st-detail-test')?.addEventListener('click', async () => {
+        await this._saveCurrentAlertDetail(panel);
+        await window.chatty.overlayReloadConfig();
+        await new Promise(r => setTimeout(r, 300));
+        const type = this._selectedAlertType;
+        const btn = detailPanel.querySelector('#st-detail-test');
+        if (this._selectedVariantIdx !== null) {
+          let overrides = {};
+          if (type === 'subscribe') {
+            const condition = detailPanel.querySelector('#st-detail-condition')?.value || 'resub';
+            if (condition === 'gifted') {
+              overrides = { is_gift: true, months: 1 };
+              await window.chatty.overlayTestAlert('subscribe', overrides);
+            } else {
+              overrides = { months: 24 };
+              await window.chatty.overlayTestAlert('resub', overrides);
+            }
+          } else if (type === 'cheer') {
+            const threshold = parseInt(detailPanel.querySelector('#st-detail-threshold')?.value) || 100;
+            overrides = { amount: threshold };
+            await window.chatty.overlayTestAlert('cheer', overrides);
+          } else if (type === 'raid') {
+            const threshold = parseInt(detailPanel.querySelector('#st-detail-threshold')?.value) || 50;
+            overrides = { viewers: threshold };
+            await window.chatty.overlayTestAlert('raid', overrides);
+          }
+          btn.textContent = 'Sent!';
+          setTimeout(() => { btn.textContent = 'Test Variant'; }, 1500);
+        } else {
+          await window.chatty.overlayTestAlert(type);
+          btn.textContent = 'Sent!';
+          setTimeout(() => { btn.textContent = 'Test Alert'; }, 1500);
         }
       });
-    });
 
-    // Clear buttons (base alerts)
-    panel.querySelectorAll('.st-clear-btn:not(.st-variant-clear)').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const type = btn.dataset.type;
-        const field = btn.dataset.field;
-        const selector = field === 'sound' ? `.st-alert-sound[data-type="${type}"]` : `.st-alert-image[data-type="${type}"]`;
-        panel.querySelector(selector).value = '';
-        btn.remove();
+      // Condition dropdown change (subscribe variants)
+      detailPanel.querySelector('#st-detail-condition')?.addEventListener('change', (e) => {
+        const label = detailPanel.querySelector('#st-detail-threshold-label');
+        if (label) {
+          label.textContent = e.target.value === 'gifted' ? 'Min Gifts' : 'Min Months';
+        }
       });
-    });
 
-    // Test buttons (base alerts)
-    panel.querySelectorAll('.st-test-btn:not(.st-test-variant-btn)').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        await this._saveAlerts(panel);
-        await new Promise(r => setTimeout(r, 300));
-        await window.chatty.overlayTestAlert(btn.dataset.type);
-        btn.textContent = 'Sent!';
-        setTimeout(() => { btn.textContent = 'Test Alert'; }, 1500);
+      // Enabled toggle — update tree status badge live
+      detailPanel.querySelector('#st-detail-enabled')?.addEventListener('change', (e) => {
+        const vidx = this._selectedVariantIdx;
+        const type = this._selectedAlertType;
+        const selector = vidx !== null
+          ? `.st-tree-item[data-type="${type}"][data-vidx="${vidx}"]`
+          : `.st-tree-item[data-type="${type}"][data-vidx="-1"]`;
+        const treeItem = panel.querySelector(selector);
+        if (treeItem) {
+          const badge = treeItem.querySelector('.st-tree-status');
+          if (badge) {
+            badge.textContent = e.target.checked ? 'ON' : 'OFF';
+            badge.className = 'st-tree-status ' + (e.target.checked ? 'on' : 'off');
+          }
+        }
       });
-    });
+    }
 
     // Wire code tab switching
     this._wireCodeTabs(panel);
-
-    // Wire variant upload/clear/remove/test and add-variant buttons
-    this._wireVariantButtons(panel);
-
-    // Add variant buttons
-    panel.querySelectorAll('.st-add-variant').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const type = btn.dataset.type;
-        const list = panel.querySelector(`.st-variants-list[data-type="${type}"]`);
-        const idx = list.querySelectorAll('.st-variant-card').length;
-        let defaultVariant;
-        if (type === 'subscribe') {
-          defaultVariant = { condition: 'resub', label: 'Resub', text: '{user} resubscribed for {months} months!' };
-        } else if (type === 'cheer') {
-          defaultVariant = { threshold: 100, label: '100+ Bits', text: '{user} cheered {amount} bits!' };
-        } else {
-          defaultVariant = { threshold: 50, label: '50+ Viewers', text: '{user} is raiding with {viewers} viewers!' };
-        }
-        const html = this._variantCardHtml(type, idx, defaultVariant);
-        list.insertAdjacentHTML('beforeend', html);
-        this._wireCodeTabs(panel);
-        this._wireLayoutPickers(panel);
-        this._wireVariantButtons(panel);
-      });
-    });
 
     // Layout picker buttons
     this._wireLayoutPickers(panel);
 
     // Save
     document.getElementById('st-save-alerts')?.addEventListener('click', async () => {
-      await this._saveAlerts(panel);
+      await this._saveCurrentAlertDetail(panel);
+      await window.chatty.overlayReloadConfig();
       const btn = document.getElementById('st-save-alerts');
       btn.textContent = 'Saved!';
       setTimeout(() => { btn.textContent = 'Save Alert Settings'; }, 1500);
@@ -711,12 +545,10 @@ class StreamerTools {
 
     // Reset to Defaults
     document.getElementById('st-reset-alerts')?.addEventListener('click', async () => {
-      const scenes = await window.chatty.getConfig('overlay.scenes') || [];
-      const scene = scenes[this._editingSceneIdx] || {};
-      scene.alerts = { delay: 3 };
-      scenes[this._editingSceneIdx] = scene;
-      await window.chatty.setConfig('overlay.scenes', scenes);
+      await window.chatty.setConfig('overlay.alerts', { delay: 3 });
       await window.chatty.overlayReloadConfig();
+      this._selectedAlertType = 'follow';
+      this._selectedVariantIdx = null;
       await this._renderAlerts();
     });
   }
@@ -745,137 +577,58 @@ class StreamerTools {
     });
   }
 
-  _wireVariantButtons(panel) {
-    // Variant upload buttons
-    panel.querySelectorAll('.st-variant-upload').forEach(btn => {
-      if (btn._wired) return;
-      btn._wired = true;
-      btn.addEventListener('click', async () => {
-        const card = btn.closest('.st-variant-card');
-        const field = btn.dataset.field;
-        const filterType = field === 'sound' ? 'sound' : 'image';
-        const result = await window.chatty.overlayUploadAsset(filterType);
-        if (result && result.filename) {
-          const input = card.querySelector(field === 'sound' ? '.st-variant-sound' : '.st-variant-image');
-          input.value = result.filename;
-        }
-      });
-    });
+  async _saveCurrentAlertDetail(panel) {
+    if (!panel) panel = document.getElementById('st-alerts-panel');
+    if (!panel) return;
 
-    // Variant clear buttons
-    panel.querySelectorAll('.st-variant-clear').forEach(btn => {
-      if (btn._wired) return;
-      btn._wired = true;
-      btn.addEventListener('click', () => {
-        const card = btn.closest('.st-variant-card');
-        const field = btn.dataset.field;
-        const input = card.querySelector(field === 'sound' ? '.st-variant-sound' : '.st-variant-image');
-        input.value = '';
-        btn.remove();
-      });
-    });
+    const detailPanel = panel.querySelector('#st-alerts-detail');
+    if (!detailPanel) return;
 
-    // Variant remove buttons
-    panel.querySelectorAll('.st-variant-remove').forEach(btn => {
-      if (btn._wired) return;
-      btn._wired = true;
-      btn.addEventListener('click', () => {
-        btn.closest('.st-variant-card').remove();
-      });
-    });
+    const enabledEl = detailPanel.querySelector('#st-detail-enabled');
+    if (!enabledEl) return;
 
-    // Variant test buttons
-    panel.querySelectorAll('.st-test-variant-btn').forEach(btn => {
-      if (btn._wired) return;
-      btn._wired = true;
-      btn.addEventListener('click', async () => {
-        await this._saveAlerts(panel);
-        await new Promise(r => setTimeout(r, 300));
-        const type = btn.dataset.type;
-        const card = btn.closest('.st-variant-card');
-        let overrides = {};
-        if (type === 'subscribe') {
-          const condition = card.querySelector('.st-variant-condition')?.value || 'resub';
-          if (condition === 'gifted') {
-            overrides = { is_gift: true, months: 1 };
-            await window.chatty.overlayTestAlert('subscribe', overrides);
-          } else {
-            overrides = { months: 24 };
-            await window.chatty.overlayTestAlert('resub', overrides);
-          }
-        } else if (type === 'cheer') {
-          const threshold = parseInt(card.querySelector('.st-variant-threshold')?.value) || 100;
-          overrides = { amount: threshold };
-          await window.chatty.overlayTestAlert('cheer', overrides);
-        } else if (type === 'raid') {
-          const threshold = parseInt(card.querySelector('.st-variant-threshold')?.value) || 50;
-          overrides = { viewers: threshold };
-          await window.chatty.overlayTestAlert('raid', overrides);
-        }
-        btn.textContent = 'Sent!';
-        setTimeout(() => { btn.textContent = 'Test Variant'; }, 1500);
-      });
-    });
-  }
+    const alerts = await window.chatty.getConfig('overlay.alerts') || {};
 
-  async _saveAlerts(panel) {
-    const scenes = await window.chatty.getConfig('overlay.scenes') || [];
-    const scene = scenes[this._editingSceneIdx] || {};
-    if (!scene.alerts) scene.alerts = {};
+    const type = this._selectedAlertType;
+    if (!alerts[type]) alerts[type] = {};
 
-    const types = ['follow', 'subscribe', 'cheer', 'raid'];
-    for (const type of types) {
-      const cfg = {
-        enabled: panel.querySelector(`.st-alert-enabled[data-type="${type}"]`)?.checked ?? true,
-        image: panel.querySelector(`.st-alert-image[data-type="${type}"]`)?.value || '',
-        sound: panel.querySelector(`.st-alert-sound[data-type="${type}"]`)?.value || '',
-        text: panel.querySelector(`.st-alert-text[data-type="${type}"]`)?.value || '',
-        duration: parseFloat(panel.querySelector(`.st-alert-duration[data-type="${type}"]`)?.value) || 8,
-        animation: panel.querySelector(`.st-alert-animation[data-type="${type}"]`)?.value || 'fadeIn',
-        fontSize: parseInt(panel.querySelector(`.st-alert-font-size[data-type="${type}"]`)?.value) || 32,
-        fontColor: panel.querySelector(`.st-alert-font-color[data-type="${type}"]`)?.value || '#ffffff',
-        layout: panel.querySelector(`.st-layout-picker[data-type="${type}"] .st-layout-btn.active`)?.dataset?.layout || 'below',
-        html: panel.querySelector(`.st-code-area[data-prefix="base-${type}"][data-lang="html"]`)?.value || '',
-        css: panel.querySelector(`.st-code-area[data-prefix="base-${type}"][data-lang="css"]`)?.value || '',
-        js: panel.querySelector(`.st-code-area[data-prefix="base-${type}"][data-lang="js"]`)?.value || '',
-      };
+    const data = {
+      enabled: enabledEl.checked,
+      image: detailPanel.querySelector('#st-detail-image')?.value || '',
+      sound: detailPanel.querySelector('#st-detail-sound')?.value || '',
+      text: detailPanel.querySelector('#st-detail-text')?.value || '',
+      duration: parseFloat(detailPanel.querySelector('#st-detail-duration')?.value) || (this._selectedVariantIdx !== null ? 0 : 8),
+      animation: detailPanel.querySelector('#st-detail-animation')?.value || '',
+      fontSize: parseInt(detailPanel.querySelector('#st-detail-font-size')?.value) || (this._selectedVariantIdx !== null ? 0 : 32),
+      fontColor: detailPanel.querySelector('#st-detail-font-color')?.value || '#ffffff',
+      layout: detailPanel.querySelector('#st-detail-layout .st-layout-btn.active')?.dataset?.layout || (this._selectedVariantIdx !== null ? '' : 'below'),
+      html: detailPanel.querySelector('.st-code-area[data-prefix="detail"][data-lang="html"]')?.value || '',
+      css: detailPanel.querySelector('.st-code-area[data-prefix="detail"][data-lang="css"]')?.value || '',
+      js: detailPanel.querySelector('.st-code-area[data-prefix="detail"][data-lang="js"]')?.value || '',
+    };
 
-      // Collect variants
-      const variantCards = panel.querySelectorAll(`.st-variant-card[data-type="${type}"]`);
-      if (variantCards.length > 0) {
-        cfg.variants = [];
-        variantCards.forEach(card => {
-          const codeSection = card.querySelector('.st-code-section');
-          const v = {
-            image: card.querySelector('.st-variant-image')?.value || '',
-            sound: card.querySelector('.st-variant-sound')?.value || '',
-            text: card.querySelector('.st-variant-text')?.value || '',
-            duration: parseFloat(card.querySelector('.st-variant-duration')?.value) || 0,
-            animation: card.querySelector('.st-variant-animation')?.value || '',
-            fontSize: parseInt(card.querySelector('.st-variant-font-size')?.value) || 0,
-            fontColor: card.querySelector('.st-variant-font-color')?.value || '',
-            layout: card.querySelector('.st-variant-layout-picker .st-layout-btn.active')?.dataset?.layout || '',
-            html: codeSection?.querySelector('.st-code-area[data-lang="html"]')?.value || '',
-            css: codeSection?.querySelector('.st-code-area[data-lang="css"]')?.value || '',
-            js: codeSection?.querySelector('.st-code-area[data-lang="js"]')?.value || '',
-          };
-          if (type === 'subscribe') {
-            v.condition = card.querySelector('.st-variant-condition')?.value || 'resub';
-            v.label = card.querySelector('.st-variant-label')?.value || '';
-          } else {
-            v.threshold = parseInt(card.querySelector('.st-variant-threshold')?.value) || 0;
-            v.label = card.querySelector('.st-variant-label')?.value || '';
-          }
-          cfg.variants.push(v);
-        });
+    if (this._selectedVariantIdx !== null) {
+      if (!alerts[type].variants) alerts[type].variants = [];
+      const v = alerts[type].variants[this._selectedVariantIdx] || {};
+      Object.assign(v, data);
+      v.label = detailPanel.querySelector('#st-detail-label')?.value || `Variant ${this._selectedVariantIdx + 1}`;
+      if (type === 'subscribe') {
+        v.condition = detailPanel.querySelector('#st-detail-condition')?.value || 'resub';
+        v.threshold = parseInt(detailPanel.querySelector('#st-detail-threshold')?.value) || 0;
+      } else {
+        v.threshold = parseInt(detailPanel.querySelector('#st-detail-threshold')?.value) || 0;
       }
-
-      scene.alerts[type] = cfg;
+      alerts[type].variants[this._selectedVariantIdx] = v;
+    } else {
+      const existingVariants = alerts[type].variants;
+      alerts[type] = { ...data };
+      if (existingVariants) alerts[type].variants = existingVariants;
     }
-    scene.alerts.delay = parseInt(document.getElementById('st-alerts-delay')?.value) ?? 3;
-    scenes[this._editingSceneIdx] = scene;
-    await window.chatty.setConfig('overlay.scenes', scenes);
-    await window.chatty.overlayReloadConfig();
+
+    const delayEl = document.getElementById('st-alerts-delay');
+    if (delayEl) alerts.delay = parseInt(delayEl.value) ?? 3;
+
+    await window.chatty.setConfig('overlay.alerts', alerts);
   }
 
   // ── Chat Overlay Tab ──
@@ -957,9 +710,7 @@ class StreamerTools {
 
     const serverRunning = await window.chatty.overlayIsRunning();
     const port = await window.chatty.getConfig('overlay.port') || 7878;
-    const scenes = await window.chatty.getConfig('overlay.scenes') || [];
-    const scene = scenes[this._editingSceneIdx] || {};
-    const chat = scene.chat || {};
+    const chat = await window.chatty.getConfig('overlay.chat') || {};
 
     const baseCfg = {
       enabled: chat.enabled ?? true,
@@ -973,8 +724,7 @@ class StreamerTools {
       css: chat.css || '',
     };
 
-    const suffix = this._sceneSuffix();
-    const chatUrl = `http://127.0.0.1:${port}/chat${suffix}`;
+    const chatUrl = `http://127.0.0.1:${port}/chat`;
 
     let html = `<div class="st-alert-card">
       <div class="st-alert-header">
@@ -1014,11 +764,9 @@ class StreamerTools {
     // Save
     document.getElementById('st-save-chat')?.addEventListener('click', async () => {
       const base = this._readChatSettings(panel, 'base');
-      const scenes = await window.chatty.getConfig('overlay.scenes') || [];
-      const scene = scenes[this._editingSceneIdx] || {};
-      scene.chat = { ...scene.chat, ...base };
-      scenes[this._editingSceneIdx] = scene;
-      await window.chatty.setConfig('overlay.scenes', scenes);
+      const chat = await window.chatty.getConfig('overlay.chat') || {};
+      const chatObj = { ...chat, ...base };
+      await window.chatty.setConfig('overlay.chat', chatObj);
 
       await window.chatty.overlayReloadConfig();
       const btn = document.getElementById('st-save-chat');
@@ -1038,13 +786,13 @@ class StreamerTools {
     const panel = document.getElementById('st-preview-panel');
     if (!panel) return;
 
-    const scenes = await window.chatty.getConfig('overlay.scenes') || [];
-    const scene = scenes[this._editingSceneIdx] || {};
+    const alerts = await window.chatty.getConfig('overlay.alerts') || {};
+    const chat = await window.chatty.getConfig('overlay.chat') || {};
 
     const defAlert = this._defaultAlertPos();
     const defChat = this._defaultChatPos();
-    const alertPos = scene.alerts?.position || defAlert;
-    const chatPos = scene.chat?.position || defChat;
+    const alertPos = alerts.position || defAlert;
+    const chatPos = chat.position || defChat;
 
     // Fill in width/height defaults if missing (backwards compat)
     if (!alertPos.width) alertPos.width = defAlert.width;
@@ -1184,14 +932,12 @@ class StreamerTools {
       const cw = parseFloat(document.getElementById('st-chat-w').value) || 25;
       const ch = parseFloat(document.getElementById('st-chat-h').value) || 35;
 
-      const scenes = await window.chatty.getConfig('overlay.scenes') || [];
-      const scene = scenes[this._editingSceneIdx] || {};
-      if (!scene.alerts) scene.alerts = {};
-      if (!scene.chat) scene.chat = {};
-      scene.alerts.position = { x: ax, y: ay, width: aw, height: ah };
-      scene.chat.position = { x: cx, y: cy, width: cw, height: ch };
-      scenes[this._editingSceneIdx] = scene;
-      await window.chatty.setConfig('overlay.scenes', scenes);
+      const alerts = await window.chatty.getConfig('overlay.alerts') || {};
+      const chat = await window.chatty.getConfig('overlay.chat') || {};
+      alerts.position = { x: ax, y: ay, width: aw, height: ah };
+      chat.position = { x: cx, y: cy, width: cw, height: ch };
+      await window.chatty.setConfig('overlay.alerts', alerts);
+      await window.chatty.setConfig('overlay.chat', chat);
       await window.chatty.overlayReloadConfig();
 
       const btn = document.getElementById('st-save-positions');

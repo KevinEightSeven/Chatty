@@ -34,8 +34,8 @@ class OverlayServer {
     if (this.server) return;
     this.port = port || this.store.get('overlay.port') || 7878;
 
-    // Ensure scenes exist (migrate from old flat config if needed)
-    this._ensureScenes();
+    // Migrate from scenes to flat config if needed
+    this._migrateFromScenes();
 
     this.server = http.createServer((req, res) => this._handleRequest(req, res));
     this.wss = new WebSocket.Server({ server: this.server });
@@ -129,23 +129,14 @@ class OverlayServer {
       return;
     }
 
-    const alertPageMatch = pathname.match(/^\/(alerts)(\d*)$/);
-    const chatPageMatch = pathname.match(/^\/(chat)(\d*)$/);
-    const configAlertMatch = pathname.match(/^\/config\/(alerts)(\d*)$/);
-    const configChatMatch = pathname.match(/^\/config\/(chat)(\d*)$/);
-
-    if (pathname === '/') {
+    if (pathname === '/' || pathname === '/alerts') {
       this._serveFile(res, path.join(__dirname, '..', 'overlay', 'alerts.html'), 'text/html');
-    } else if (alertPageMatch) {
-      this._serveFile(res, path.join(__dirname, '..', 'overlay', 'alerts.html'), 'text/html');
-    } else if (chatPageMatch) {
+    } else if (pathname === '/chat') {
       this._serveFile(res, path.join(__dirname, '..', 'overlay', 'chat.html'), 'text/html');
-    } else if (configAlertMatch) {
-      const sceneIdx = configAlertMatch[2] ? parseInt(configAlertMatch[2]) - 1 : 0;
-      this._serveJSON(res, this._getSceneAlertConfig(Math.max(0, sceneIdx)));
-    } else if (configChatMatch) {
-      const sceneIdx = configChatMatch[2] ? parseInt(configChatMatch[2]) - 1 : 0;
-      this._serveJSON(res, this._getSceneChatConfig(Math.max(0, sceneIdx)));
+    } else if (pathname === '/config/alerts') {
+      this._serveJSON(res, this._getAlertConfig());
+    } else if (pathname === '/config/chat') {
+      this._serveJSON(res, this._getChatConfig());
     } else if (pathname.startsWith('/assets/')) {
       const filename = path.basename(pathname);
       const filePath = path.join(this.assetsDir, filename);
@@ -183,66 +174,31 @@ class OverlayServer {
     res.end(JSON.stringify(data));
   }
 
-  _ensureScenes() {
-    let scenes = this.store.get('overlay.scenes');
-    if (scenes && scenes.length > 0) {
-      // One-time migration: strip old custom HTML/CSS/JS from alert configs
-      if (!this.store.get('overlay._migratedSimpleAlerts')) {
-        for (const scene of scenes) {
-          if (!scene.alerts) continue;
-          for (const type of ['follow', 'subscribe', 'cheer', 'raid']) {
-            if (scene.alerts[type]) {
-              scene.alerts[type].html = '';
-              scene.alerts[type].css = '';
-              scene.alerts[type].js = '';
-              if (scene.alerts[type].variants) {
-                for (const v of scene.alerts[type].variants) {
-                  v.html = '';
-                  v.css = '';
-                  v.js = '';
-                }
-              }
-            }
-          }
-        }
-        this.store.set('overlay.scenes', scenes);
-        this.store.set('overlay._migratedSimpleAlerts', true);
+  // One-time migration: move scenes[0] data to flat overlay.alerts / overlay.chat keys
+  _migrateFromScenes() {
+    try {
+      const scenes = this.store.get('overlay.scenes');
+      if (!scenes || scenes.length === 0) return;
+
+      // Already migrated
+      if (this.store.get('overlay._migratedFlatConfig')) return;
+
+      const scene = scenes[0] || {};
+      if (scene.alerts) {
+        this.store.set('overlay.alerts', scene.alerts);
       }
-      return scenes;
+      if (scene.chat) {
+        this.store.set('overlay.chat', scene.chat);
+      }
+      this.store.delete('overlay.scenes');
+      this.store.set('overlay._migratedFlatConfig', true);
+    } catch (err) {
+      console.error('Scene migration error:', err);
     }
-
-    // Migrate from old flat config to scenes
-    const types = ['follow', 'subscribe', 'cheer', 'raid'];
-    const alerts = {};
-    for (const type of types) {
-      const val = this.store.get(`overlay.alerts.${type}`);
-      if (val) alerts[type] = val;
-    }
-    alerts.position = this.store.get('overlay.alerts.position') || null;
-    alerts.delay = this.store.get('overlay.alerts.delay') ?? 3;
-
-    const chat = {
-      enabled: this.store.get('overlay.chat.enabled') ?? true,
-      showBadges: this.store.get('overlay.chat.showBadges') ?? true,
-      showTimestamps: this.store.get('overlay.chat.showTimestamps') ?? false,
-      fontSize: this.store.get('overlay.chat.fontSize') || 16,
-      maxMessages: this.store.get('overlay.chat.maxMessages') || 6,
-      fadeOut: this.store.get('overlay.chat.fadeOut') ?? true,
-      fadeDelay: this.store.get('overlay.chat.fadeDelay') || 30,
-      animation: this.store.get('overlay.chat.animation') || 'slideIn',
-      position: this.store.get('overlay.chat.position') || null,
-      css: this.store.get('overlay.chat.css') || '',
-    };
-
-    scenes = [{ name: 'Default', alerts, chat }];
-    this.store.set('overlay.scenes', scenes);
-    return scenes;
   }
 
-  _getSceneAlertConfig(sceneIdx) {
-    const scenes = this._ensureScenes();
-    const scene = scenes[sceneIdx] || scenes[0] || {};
-    const alerts = scene.alerts || {};
+  _getAlertConfig() {
+    const alerts = this.store.get('overlay.alerts') || {};
 
     const types = ['follow', 'subscribe', 'cheer', 'raid'];
     const defaultTexts = {
@@ -256,7 +212,6 @@ class OverlayServer {
       const t = DEFAULT_TEMPLATES[type];
       if (alerts[type]) {
         result[type] = { ...alerts[type] };
-        // Fill in default template when user hasn't customized HTML
         if (!result[type].html) {
           result[type].html = t.html;
           result[type].css = result[type].css || t.css;
@@ -277,10 +232,8 @@ class OverlayServer {
     return result;
   }
 
-  _getSceneChatConfig(sceneIdx) {
-    const scenes = this._ensureScenes();
-    const scene = scenes[sceneIdx] || scenes[0] || {};
-    const chat = scene.chat || {};
+  _getChatConfig() {
+    const chat = this.store.get('overlay.chat') || {};
 
     return {
       enabled: chat.enabled ?? true,

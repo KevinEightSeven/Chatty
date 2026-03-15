@@ -35,6 +35,7 @@ let tray = null;
 let overlayServer = null;
 let overlayChatRenderer = null;
 const chatListeners = new Map(); // channel -> listener count (ref-counting)
+const pendingGiftRecipients = []; // Buffer gift sub recipients for correlation
 const profileCards = new Map(); // username → BrowserWindow
 
 // Set up per-user data folder — creates {userData}/{username}/ with logs and settings subfolders
@@ -222,6 +223,9 @@ ipcMain.handle('auth:login', async () => {
       twitchChat.connect(userInfo.login, authManager.getAccessToken());
       twitchChat.onStateChange = (connected) => {
         mainWindow?.webContents.send('chat:state-change', connected);
+      };
+      twitchChat.onWhisper = (parsed) => {
+        mainWindow?.webContents.send('chat:whisper', parsed);
       };
     }
 
@@ -469,6 +473,35 @@ ipcMain.handle('eventsub:start', async () => {
 
         resolve({ success: true });
       } else {
+        // Filter out self-follows (broadcaster can't follow their own channel)
+        if (evt.type === 'channel.follow' && evt.event?.user_id && evt.event?.broadcaster_user_id && evt.event.user_id === evt.event.broadcaster_user_id) return;
+
+        // Correlate gift subs: buffer recipient from channel.subscribe (is_gift),
+        // attach to channel.subscription.gift so one alert shows gifter → recipient
+        if (evt.type === 'channel.subscribe' && evt.event?.is_gift) {
+          pendingGiftRecipients.push({
+            user_name: evt.event.user_name || evt.event.user_login || 'Someone',
+            tier: evt.event.tier,
+            timestamp: Date.now(),
+          });
+          return; // Don't emit — the channel.subscription.gift event will carry this info
+        }
+
+        if (evt.type === 'channel.subscription.gift') {
+          // Clean stale entries (older than 10s)
+          const now = Date.now();
+          while (pendingGiftRecipients.length && now - pendingGiftRecipients[0].timestamp > 10000) {
+            pendingGiftRecipients.shift();
+          }
+          // Attach matching recipients
+          const total = evt.event.total || 1;
+          const recipients = [];
+          for (let i = 0; i < total && pendingGiftRecipients.length > 0; i++) {
+            recipients.push(pendingGiftRecipients.shift().user_name);
+          }
+          evt.event._recipients = recipients;
+        }
+
         mainWindow?.webContents.send('eventsub:event', evt);
 
         // Save alert to persistent log file
@@ -496,6 +529,7 @@ ipcMain.handle('eventsub:start', async () => {
             alertData.total = e.total || 1;
             alertData.cumulative_total = e.cumulative_total || 0;
             alertData.is_anonymous = e.is_anonymous || false;
+            alertData.recipients = e._recipients || [];
           } else if (evt.type === 'channel.subscription.message') {
             alertData.user = e.user_name || e.user_login || 'Someone';
             alertData.tier = e.tier || '1';
@@ -643,6 +677,11 @@ ipcMain.handle('chat:send', async (_event, channel, message, broadcasterId) => {
   const sent = twitchChat.send(channel, message);
   if (!sent) return { error: 'IRC not connected — try again in a moment' };
   return { success: true };
+});
+
+ipcMain.handle('chat:send-whisper', async (_event, toUserId, message) => {
+  if (!twitchAPI || !authManager?.userInfo) return { error: 'Not authenticated' };
+  return twitchAPI.sendWhisper(authManager.userInfo.userId, toUserId, message);
 });
 
 ipcMain.handle('chat:is-connected', async () => {
@@ -903,6 +942,9 @@ app.whenReady().then(async () => {
       twitchChat.connect(userInfo.login, authManager.getAccessToken());
       twitchChat.onStateChange = (connected) => {
         mainWindow?.webContents.send('chat:state-change', connected);
+      };
+      twitchChat.onWhisper = (parsed) => {
+        mainWindow?.webContents.send('chat:whisper', parsed);
       };
     }
   }

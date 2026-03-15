@@ -14,6 +14,7 @@ class TwitchChat {
     this._reconnectDelay = 1000;
     this.connected = false;
     this.onStateChange = null; // callback(connected)
+    this.onWhisper = null; // callback(parsed) — global whisper handler
   }
 
   connect(nick, oauthToken) {
@@ -143,6 +144,12 @@ class TwitchChat {
     // Parse IRC message
     const parsed = this._parse(line);
     if (!parsed) return;
+
+    // Handle whispers globally (not channel-specific)
+    if (parsed.command === 'WHISPER') {
+      if (this.onWhisper) this.onWhisper(parsed);
+      return;
+    }
 
     const channel = parsed.channel?.replace('#', '');
     if (!channel) return;

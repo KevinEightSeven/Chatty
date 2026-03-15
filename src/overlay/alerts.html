@@ -314,24 +314,34 @@
     if (configKey === 'subscribe') {
       // Check gifted sub first, then resub
       if (data.is_gift) {
-        matched = baseConfig.variants.find(v => v.condition === 'gifted');
+        const giftedVariants = baseConfig.variants
+          .filter(v => v.condition === 'gifted' && v.enabled !== false)
+          .sort((a, b) => (b.threshold || 0) - (a.threshold || 0));
+        matched = giftedVariants.find(v => (data.total || 1) >= (v.threshold || 0));
       } else if (data.months && data.months > 1) {
-        matched = baseConfig.variants.find(v => v.condition === 'resub');
+        const resubVariants = baseConfig.variants
+          .filter(v => v.condition === 'resub' && v.enabled !== false)
+          .sort((a, b) => (b.threshold || 0) - (a.threshold || 0));
+        matched = resubVariants.find(v => (data.months || 0) >= (v.threshold || 0));
       }
     } else if (configKey === 'cheer') {
-      // Highest threshold the bit amount meets
-      const sorted = [...baseConfig.variants].sort((a, b) => (b.threshold || 0) - (a.threshold || 0));
+      // Highest threshold the bit amount meets (only enabled variants)
+      const sorted = baseConfig.variants
+        .filter(v => v.enabled !== false)
+        .sort((a, b) => (b.threshold || 0) - (a.threshold || 0));
       matched = sorted.find(v => (data.amount || 0) >= (v.threshold || 0));
     } else if (configKey === 'raid') {
-      // Highest threshold the viewer count meets
-      const sorted = [...baseConfig.variants].sort((a, b) => (b.threshold || 0) - (a.threshold || 0));
+      // Highest threshold the viewer count meets (only enabled variants)
+      const sorted = baseConfig.variants
+        .filter(v => v.enabled !== false)
+        .sort((a, b) => (b.threshold || 0) - (a.threshold || 0));
       matched = sorted.find(v => (data.viewers || 0) >= (v.threshold || 0));
     }
 
     if (!matched) return baseConfig;
 
-    // Merge: variant non-empty fields override base
-    const merged = { ...baseConfig };
+    // Merge: variant non-empty fields override base, mark as enabled
+    const merged = { ...baseConfig, enabled: true };
     for (const key of ['image', 'sound', 'text', 'animation', 'css', 'html', 'js', 'layout']) {
       if (matched[key]) merged[key] = matched[key];
     }
@@ -375,13 +385,19 @@
     const configKey = typeMap[eventType] || 'follow';
     const baseConfig = config[configKey];
 
-    if (!baseConfig || !baseConfig.enabled) {
+    if (!baseConfig) {
       showNext();
       return;
     }
 
-    // Check for matching variant
+    // Check for matching variant (variants can fire even if base is disabled)
     const alertConfig = resolveVariant(baseConfig, data, configKey);
+
+    // Skip if the resolved alert is disabled
+    if (!alertConfig.enabled) {
+      showNext();
+      return;
+    }
 
     // Play sound via Web Audio API (async, self-contained)
     if (alertConfig.sound) {

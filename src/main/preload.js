@@ -95,6 +95,12 @@ contextBridge.exposeInMainWorld('chatty', {
     ipcRenderer.on('chat:state-change', handler);
     return () => ipcRenderer.removeListener('chat:state-change', handler);
   },
+  onWhisper: (callback) => {
+    const handler = (_event, parsed) => callback(parsed);
+    ipcRenderer.on('chat:whisper', handler);
+    return () => ipcRenderer.removeListener('chat:whisper', handler);
+  },
+  sendWhisper: (toUserId, message) => ipcRenderer.invoke('chat:send-whisper', toUserId, message),
 
   // EventSub (Alerts)
   startEventSub: () => ipcRenderer.invoke('eventsub:start'),

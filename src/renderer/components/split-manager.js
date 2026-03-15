@@ -74,6 +74,17 @@ class SplitManager {
     panel.innerHTML = `
       <div class="split-header">
         <span class="split-channel-name">No channel</span>
+        <span class="room-mode-icons" style="display:none;">
+          <span class="room-mode-icon" data-mode="followers" title="Followers-Only Mode">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+          </span>
+          <span class="room-mode-icon" data-mode="subs" title="Subscribers-Only Mode">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          </span>
+          <span class="room-mode-icon" data-mode="emote" title="Emote-Only Mode">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 14s1.5 2 4 2 4-2 4-2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="9" cy="9.5" r="1.5"/><circle cx="15" cy="9.5" r="1.5"/></svg>
+          </span>
+        </span>
       </div>
       <div class="split-live-info" style="display:none;">
         <div class="live-info-scroll">
@@ -153,14 +164,18 @@ class SplitManager {
     wrapper.querySelectorAll(':scope > .split-row').forEach((row) => {
       row.style.flex = '1';
     });
-    // All splits equal width within their rows
-    const tabSplitList = this.tabSplits.get(tabId) || [];
-    for (const sid of tabSplitList) {
-      const s = this.splits.get(sid);
-      if (s?.element) {
-        s.element.style.flex = '1';
-      }
-    }
+    // All splits and columns equal width within their rows
+    wrapper.querySelectorAll('.split-row').forEach((row) => {
+      row.querySelectorAll(':scope > .split-panel, :scope > .split-column').forEach((child) => {
+        child.style.flex = '1';
+      });
+    });
+    // All splits equal height within columns
+    wrapper.querySelectorAll('.split-column').forEach((col) => {
+      col.querySelectorAll(':scope > .split-panel').forEach((panel) => {
+        panel.style.flex = '1';
+      });
+    });
   }
 
   selectSplit(splitId) {
@@ -219,17 +234,23 @@ class SplitManager {
 
     const wrapper = this.container.querySelector(`[data-tab-id="${tabId}"]`);
     const panel = wrapper.querySelector(`[data-split-id="${splitId}"]`);
-    const row = panel.parentElement;
+    const parent = panel.parentElement;
 
-    // Remove adjacent gutter within the row
+    // Remove adjacent gutter
     const prevGutter = panel.previousElementSibling;
     const nextGutter = panel.nextElementSibling;
-    if (prevGutter?.classList.contains('split-gutter')) prevGutter.remove();
-    else if (nextGutter?.classList.contains('split-gutter')) nextGutter.remove();
+    if (prevGutter?.classList.contains('split-gutter') || prevGutter?.classList.contains('split-gutter-h')) prevGutter.remove();
+    else if (nextGutter?.classList.contains('split-gutter') || nextGutter?.classList.contains('split-gutter-h')) nextGutter.remove();
     panel.remove();
 
+    // Unwrap column if only one panel remains
+    if (parent?.classList.contains('split-column')) {
+      this._unwrapColumnIfNeeded(parent);
+    }
+
     // If the row is now empty, remove it and adjacent horizontal gutter
-    if (row.classList.contains('split-row') && row.querySelectorAll(':scope > .split-panel').length === 0) {
+    const row = parent?.classList.contains('split-column') ? parent.parentElement : parent;
+    if (row?.classList.contains('split-row') && row.querySelectorAll(':scope > .split-panel, :scope > .split-column').length === 0) {
       const prevH = row.previousElementSibling;
       const nextH = row.nextElementSibling;
       if (prevH?.classList.contains('split-gutter-h')) prevH.remove();
@@ -329,6 +350,17 @@ class SplitManager {
       if (split._userListOpen) {
         this._refreshUserList(splitId);
       }
+    };
+
+    // Room mode indicators (followers-only, subs-only, emote-only)
+    const modeIcons = split.element.querySelector('.room-mode-icons');
+    if (modeIcons) modeIcons.style.display = '';
+    split._roomState = { followersOnly: false, subsOnly: false, emoteOnly: false };
+    split.chatView.onRoomState = (state) => {
+      if (state.followersOnly !== undefined) split._roomState.followersOnly = state.followersOnly;
+      if (state.subsOnly !== undefined) split._roomState.subsOnly = state.subsOnly;
+      if (state.emoteOnly !== undefined) split._roomState.emoteOnly = state.emoteOnly;
+      this._updateRoomModeIcons(split);
     };
 
     split.chatView.start();
@@ -1502,22 +1534,30 @@ class SplitManager {
     let text = '';
 
     if (evt.type === 'channel.follow') {
+      // Skip self-follows (broadcaster can't follow their own channel)
+      if (e.user_id && e.broadcaster_user_id && e.user_id === e.broadcaster_user_id) return null;
       icon = '&#x2764;&#xFE0F;';
       text = `<strong>${this._escapeHtml(e.user_name)}</strong> followed!`;
     } else if (evt.type === 'channel.subscribe') {
+      // Skip gift subs — channel.subscription.gift already covers the gifter alert
+      if (e.is_gift) return null;
       icon = '&#x2B50;';
       const tier = e.tier === '2000' ? 'Tier 2' : e.tier === '3000' ? 'Tier 3' : 'Tier 1';
-      if (e.is_gift) {
-        text = `<strong>${this._escapeHtml(e.user_name)}</strong> was gifted a sub (${tier})!`;
-      } else {
-        text = `<strong>${this._escapeHtml(e.user_name)}</strong> subscribed (${tier})!`;
-      }
+      text = `<strong>${this._escapeHtml(e.user_name)}</strong> subscribed (${tier})!`;
     } else if (evt.type === 'channel.subscription.gift') {
       icon = '&#x1F381;';
       const tier = e.tier === '2000' ? 'Tier 2' : e.tier === '3000' ? 'Tier 3' : 'Tier 1';
       const gifter = e.is_anonymous ? 'Anonymous' : (e.user_name || 'Someone');
       const count = e.total || 1;
-      text = `<strong>${this._escapeHtml(gifter)}</strong> gifted <strong>${count}</strong> sub${count > 1 ? 's' : ''} (${tier})!`;
+      const recipients = e._recipients || [];
+      if (count === 1 && recipients.length === 1) {
+        text = `<strong>${this._escapeHtml(gifter)}</strong> gifted <strong>${this._escapeHtml(recipients[0])}</strong> a sub (${tier})!`;
+      } else if (recipients.length > 0) {
+        text = `<strong>${this._escapeHtml(gifter)}</strong> gifted <strong>${count}</strong> subs (${tier})!`;
+        text += `<br><span style="color:var(--text-secondary);">to ${recipients.map(r => this._escapeHtml(r)).join(', ')}</span>`;
+      } else {
+        text = `<strong>${this._escapeHtml(gifter)}</strong> gifted <strong>${count}</strong> sub${count > 1 ? 's' : ''} (${tier})!`;
+      }
       if (e.cumulative_total) {
         text += `<br><span style="color:var(--text-secondary);">${e.cumulative_total} total gifts in this channel</span>`;
       }
@@ -1578,6 +1618,23 @@ class SplitManager {
 
   // ── Session persistence ──
 
+  _serializePanelOrColumn(el) {
+    if (el.classList.contains('split-panel')) {
+      const sid = el.dataset.splitId;
+      const split = this.splits.get(sid);
+      if (!split) return null;
+      return split._isAlertsSplit ? { isAlerts: true } : { channel: split.channel || null };
+    } else if (el.classList.contains('split-column')) {
+      const colSplits = [];
+      el.querySelectorAll(':scope > .split-panel').forEach((panel) => {
+        const entry = this._serializePanelOrColumn(panel);
+        if (entry) colSplits.push(entry);
+      });
+      return colSplits.length > 0 ? { column: colSplits } : null;
+    }
+    return null;
+  }
+
   serializeState() {
     const tabs = [];
     for (const tab of (window.tabManager?.tabs || [])) {
@@ -1586,16 +1643,9 @@ class SplitManager {
       if (wrapper) {
         wrapper.querySelectorAll(':scope > .split-row').forEach((row) => {
           const splits = [];
-          row.querySelectorAll(':scope > .split-panel').forEach((panel) => {
-            const sid = panel.dataset.splitId;
-            const split = this.splits.get(sid);
-            if (split) {
-              if (split._isAlertsSplit) {
-                splits.push({ isAlerts: true });
-              } else {
-                splits.push({ channel: split.channel || null });
-              }
-            }
+          row.querySelectorAll(':scope > .split-panel, :scope > .split-column').forEach((child) => {
+            const entry = this._serializePanelOrColumn(child);
+            if (entry) splits.push(entry);
           });
           if (splits.length > 0) rows.push({ splits });
         });
@@ -1649,6 +1699,35 @@ class SplitManager {
         wrapper.appendChild(row);
 
         for (const splitData of rowData.splits) {
+          if (splitData.column) {
+            // Restore a column of vertically stacked splits
+            const column = document.createElement('div');
+            column.className = 'split-column';
+            column.style.cssText = 'display:flex;flex-direction:column;flex:1;min-height:0;';
+            if (row.querySelectorAll(':scope > .split-panel, :scope > .split-column').length > 0) {
+              const gutter = document.createElement('div');
+              gutter.className = 'split-gutter';
+              row.appendChild(gutter);
+            }
+            row.appendChild(column);
+            for (let ci = 0; ci < splitData.column.length; ci++) {
+              const colEntry = splitData.column[ci];
+              if (ci > 0) {
+                const hGutter = document.createElement('div');
+                hGutter.className = 'split-gutter-h';
+                column.appendChild(hGutter);
+              }
+              if (colEntry.isAlerts) {
+                await this._restoreAlertsSplit(tabId, column);
+              } else {
+                const newSplit = this.addSplit(tabId, column);
+                if (newSplit && (colEntry.channel || colEntry.videoId)) {
+                  await this.connectSplit(newSplit.id, colEntry.channel || colEntry.videoId);
+                }
+              }
+            }
+            continue;
+          }
           if (splitData.isAlerts) {
             // Restore alerts split into this specific row
             await this._restoreAlertsSplit(tabId, row);
@@ -1835,17 +1914,23 @@ class SplitManager {
     if (!draggedSplit?.element || !targetSplit?.element) return;
 
     const draggedPanel = draggedSplit.element;
-    const oldRow = draggedPanel.parentElement;
+    const oldParent = draggedPanel.parentElement;
 
-    // Remove dragged panel from its current row (with adjacent gutter)
+    // Remove dragged panel from its current position (with adjacent gutter)
     const prevGutter = draggedPanel.previousElementSibling;
     const nextGutter = draggedPanel.nextElementSibling;
-    if (prevGutter?.classList.contains('split-gutter')) prevGutter.remove();
-    else if (nextGutter?.classList.contains('split-gutter')) nextGutter.remove();
+    if (prevGutter?.classList.contains('split-gutter') || prevGutter?.classList.contains('split-gutter-h')) prevGutter.remove();
+    else if (nextGutter?.classList.contains('split-gutter') || nextGutter?.classList.contains('split-gutter-h')) nextGutter.remove();
     draggedPanel.remove();
 
+    // Unwrap column if only one panel remains
+    if (oldParent?.classList.contains('split-column')) {
+      this._unwrapColumnIfNeeded(oldParent);
+    }
+
     // Clean up old row if it's now empty
-    if (oldRow?.classList.contains('split-row') && oldRow.querySelectorAll(':scope > .split-panel').length === 0) {
+    const oldRow = oldParent?.classList.contains('split-column') ? oldParent.parentElement : oldParent;
+    if (oldRow?.classList.contains('split-row') && oldRow.querySelectorAll(':scope > .split-panel, :scope > .split-column').length === 0) {
       const prevH = oldRow.previousElementSibling;
       const nextH = oldRow.nextElementSibling;
       if (prevH?.classList.contains('split-gutter-h')) prevH.remove();
@@ -1854,17 +1939,18 @@ class SplitManager {
     }
 
     if (position === 'left' || position === 'right') {
-      // Insert into target's row
-      const targetRow = targetSplit.element.parentElement;
+      // Insert into target's row (or column's parent row)
+      const targetParent = targetSplit.element.parentElement;
+      const targetRow = targetParent.classList.contains('split-column') ? targetParent.parentElement : targetParent;
+      const insertRef = targetParent.classList.contains('split-column') ? targetParent : targetSplit.element;
       const gutter = document.createElement('div');
       gutter.className = 'split-gutter';
 
       if (position === 'left') {
-        targetRow.insertBefore(draggedPanel, targetSplit.element);
-        targetRow.insertBefore(gutter, targetSplit.element);
+        targetRow.insertBefore(draggedPanel, insertRef);
+        targetRow.insertBefore(gutter, insertRef);
       } else {
-        // Insert after target (skip past any gutter that follows target)
-        let insertPoint = targetSplit.element.nextElementSibling;
+        let insertPoint = insertRef.nextElementSibling;
         if (insertPoint?.classList.contains('split-gutter')) {
           insertPoint = insertPoint.nextElementSibling;
         }
@@ -1877,32 +1963,73 @@ class SplitManager {
         }
       }
     } else {
-      // Top/bottom: create a new full-width row
-      const newRow = document.createElement('div');
-      newRow.className = 'split-row';
-      newRow.style.cssText = 'display:flex;flex:1;min-height:0;';
-      newRow.appendChild(draggedPanel);
+      // Top/bottom: stack vertically
+      const targetParent = targetSplit.element.parentElement;
+      const isInColumn = targetParent.classList.contains('split-column');
+      const targetRow = isInColumn ? targetParent.parentElement : targetParent;
+      const rowPanelCount = targetRow.querySelectorAll(':scope > .split-panel, :scope > .split-column').length;
 
-      const hGutter = document.createElement('div');
-      hGutter.className = 'split-gutter-h';
+      if (isInColumn) {
+        // Target is already in a column — insert within it
+        const hGutter = document.createElement('div');
+        hGutter.className = 'split-gutter-h';
 
-      const targetRow = targetSplit.element.parentElement;
-
-      if (position === 'top') {
-        wrapper.insertBefore(newRow, targetRow);
-        wrapper.insertBefore(hGutter, targetRow);
-      } else {
-        // Insert after target row (skip past any horizontal gutter that follows)
-        let insertPoint = targetRow.nextElementSibling;
-        if (insertPoint?.classList.contains('split-gutter-h')) {
-          insertPoint = insertPoint.nextElementSibling;
-        }
-        if (insertPoint) {
-          wrapper.insertBefore(hGutter, insertPoint);
-          wrapper.insertBefore(newRow, hGutter.nextSibling);
+        if (position === 'top') {
+          targetParent.insertBefore(draggedPanel, targetSplit.element);
+          targetParent.insertBefore(hGutter, targetSplit.element);
         } else {
-          wrapper.appendChild(hGutter);
-          wrapper.appendChild(newRow);
+          let insertPoint = targetSplit.element.nextElementSibling;
+          if (insertPoint?.classList.contains('split-gutter-h')) insertPoint = insertPoint.nextElementSibling;
+          if (insertPoint) {
+            targetParent.insertBefore(hGutter, insertPoint);
+            targetParent.insertBefore(draggedPanel, hGutter.nextSibling);
+          } else {
+            targetParent.appendChild(hGutter);
+            targetParent.appendChild(draggedPanel);
+          }
+        }
+      } else if (rowPanelCount > 1) {
+        // Target is in a row with other panels — wrap target in a column
+        const column = document.createElement('div');
+        column.className = 'split-column';
+        column.style.cssText = 'display:flex;flex-direction:column;flex:1;min-height:0;';
+
+        targetRow.insertBefore(column, targetSplit.element);
+        column.appendChild(targetSplit.element);
+
+        const hGutter = document.createElement('div');
+        hGutter.className = 'split-gutter-h';
+
+        if (position === 'top') {
+          column.insertBefore(draggedPanel, targetSplit.element);
+          column.insertBefore(hGutter, targetSplit.element);
+        } else {
+          column.appendChild(hGutter);
+          column.appendChild(draggedPanel);
+        }
+      } else {
+        // Target is alone in its row — create a new full-width row
+        const newRow = document.createElement('div');
+        newRow.className = 'split-row';
+        newRow.style.cssText = 'display:flex;flex:1;min-height:0;';
+        newRow.appendChild(draggedPanel);
+
+        const hGutter = document.createElement('div');
+        hGutter.className = 'split-gutter-h';
+
+        if (position === 'top') {
+          wrapper.insertBefore(newRow, targetRow);
+          wrapper.insertBefore(hGutter, targetRow);
+        } else {
+          let insertPoint = targetRow.nextElementSibling;
+          if (insertPoint?.classList.contains('split-gutter-h')) insertPoint = insertPoint.nextElementSibling;
+          if (insertPoint) {
+            wrapper.insertBefore(hGutter, insertPoint);
+            wrapper.insertBefore(newRow, hGutter.nextSibling);
+          } else {
+            wrapper.appendChild(hGutter);
+            wrapper.appendChild(newRow);
+          }
         }
       }
     }
@@ -1911,6 +2038,42 @@ class SplitManager {
     this._cleanupGutters(wrapper);
     this._equalizeSplits(tabId);
     saveSession();
+  }
+
+  _updateRoomModeIcons(split) {
+    if (!split?.element || !split._roomState) return;
+    const icons = split.element.querySelector('.room-mode-icons');
+    if (!icons) return;
+    const state = split._roomState;
+    icons.querySelector('[data-mode="followers"]').classList.toggle('active', !!state.followersOnly);
+    icons.querySelector('[data-mode="subs"]').classList.toggle('active', !!state.subsOnly);
+    icons.querySelector('[data-mode="emote"]').classList.toggle('active', !!state.emoteOnly);
+  }
+
+  _unwrapColumnIfNeeded(column) {
+    if (!column?.classList.contains('split-column')) return;
+    const panels = column.querySelectorAll(':scope > .split-panel');
+    // Remove any orphaned gutters
+    column.querySelectorAll(':scope > .split-gutter-h').forEach(g => {
+      if (!g.previousElementSibling?.classList.contains('split-panel') ||
+          !g.nextElementSibling?.classList.contains('split-panel')) {
+        g.remove();
+      }
+    });
+    if (panels.length === 0) {
+      // Column is empty — remove it and adjacent gutter
+      const prevG = column.previousElementSibling;
+      const nextG = column.nextElementSibling;
+      if (prevG?.classList.contains('split-gutter')) prevG.remove();
+      else if (nextG?.classList.contains('split-gutter')) nextG.remove();
+      column.remove();
+    } else if (panels.length === 1) {
+      // Unwrap: replace column with the single panel
+      const single = panels[0];
+      column.querySelectorAll(':scope > .split-gutter-h').forEach(g => g.remove());
+      column.parentElement.insertBefore(single, column);
+      column.remove();
+    }
   }
 
   _cleanupGutters(wrapper) {

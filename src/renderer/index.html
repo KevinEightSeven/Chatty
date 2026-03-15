@@ -21,7 +21,7 @@
         <rect x="8" y="8" width="240" height="240" rx="48" ry="48" fill="url(#icon-bg)"/>
         <text x="128" y="158" font-family="Consolas, 'Courier New', monospace" font-weight="bold" font-size="120" fill="white" text-anchor="middle" letter-spacing="-4">&gt;_</text>
       </svg>
-      <span id="titlebar-title">Chatty - v1.3.4</span>
+      <span id="titlebar-title">Chatty - v1.4.0</span>
     </div>
     <div id="titlebar-account">
       <img id="account-avatar" src="" alt="" style="display:none;">
@@ -32,13 +32,18 @@
           <circle cx="12" cy="7" r="4"/>
         </svg>
       </button>
-      <button id="btn-alerts" title="Alerts">
+      <button id="btn-whispers" title="Whispers" style="display:none;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        </svg>
+      </button>
+      <button id="btn-alerts" title="Alerts" style="display:none;">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
           <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
         </svg>
       </button>
-      <button id="btn-streamer-tools" title="Streamer Tools">
+      <button id="btn-streamer-tools" title="Streamer Tools" style="display:none;">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
         </svg>
@@ -85,6 +90,20 @@
   <!-- Main content area -->
   <div id="main-content">
     <div id="split-container"></div>
+  </div>
+
+  <!-- Whisper Panel -->
+  <div id="whisper-panel" class="hidden">
+    <div id="whisper-header">
+      <span id="whisper-title">Whispers</span>
+      <div id="whisper-unread" class="hidden">0</div>
+      <button id="whisper-close">&#x2715;</button>
+    </div>
+    <div id="whisper-messages"></div>
+    <div id="whisper-input-bar">
+      <input type="text" id="whisper-input" placeholder="No active conversation" disabled>
+      <button id="whisper-send" disabled>Send</button>
+    </div>
   </div>
 
   <!-- Account / Settings Modal -->

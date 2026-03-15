@@ -23,6 +23,28 @@
      for what changed and when, especially across session boundaries.
 -->
 
+## v1.4.0 (2026-03-15)
+
+### New Features
+- **Whisper system**: Dedicated whisper panel in the titlebar intercepts all incoming whispers. Conversation tabs, unread badge, and reply support via Twitch Helix API
+- **Room mode indicators**: Live heart/star/smiley icons in each channel header show followers-only, subscribers-only, and emote-only mode status. Gray when off, green when active, updates in real-time on ROOMSTATE changes
+- **Nested column splits**: Drag-and-drop now supports vertical stacking within a row — drop a panel above/below another in a multi-panel row to create a column layout instead of a full-width row
+- **Website**: Product website at `website/` with feature showcase, screenshots, and contact form (help@bravounit.com)
+
+### Improvements
+- **Streamer Tools redesign**: Alerts section now uses a tree sidebar + detail panel layout (like Streamlabs). Alert types on the left, full config on the right. Each variant has its own enabled toggle and can fire independently of the base alert
+- **Scenes removed**: Simplified overlay config from multi-scene array to flat `overlay.alerts` / `overlay.chat` keys. One-time migration from old scenes config happens automatically
+- **Gift sub alerts**: Single combined alert showing "gifter gifted recipient a sub (Tier 1)!" instead of two separate alerts. Correlates `channel.subscribe` and `channel.subscription.gift` events
+- **Self-follow filter**: Suppresses bogus follow alerts where the broadcaster appears as a follower of their own channel
+- **Titlebar**: Darker background (#131316) to visually distinguish it as a draggable bar
+- **Logged-in buttons**: Whispers, Alerts, and Streamer Tools buttons in the titlebar are hidden until the user logs in
+- **Alert variant toggles**: Each variant has its own ON/OFF toggle. Enabled variants fire on the OBS overlay even if the base alert is disabled
+- **Tree status badges**: ON/OFF badges in the alert tree update instantly when toggling the enabled switch
+
+### Bug Fixes
+- **Gift sub duplicate**: Gift subs no longer show two alerts (one for recipient, one for gifter). The `channel.subscribe` event with `is_gift=true` is suppressed; the `channel.subscription.gift` event includes the recipient name
+- **Alert tree toggle sync**: Toggling an alert's enabled state now immediately updates the ON/OFF badge in the tree sidebar
+
 ## v1.3.4 (2026-03-12)
 
 ### Bug Fixes
