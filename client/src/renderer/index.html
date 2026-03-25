@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://api.betterttv.net https://api.frankerfacez.com https://7tv.io https://api.github.com http://127.0.0.1:*; img-src 'self' https://static-cdn.jtvnw.net https://cdn.betterttv.net https://cdn.frankerfacez.com https://cdn.7tv.app https://*.twitch.tv data:; style-src 'self' 'unsafe-inline'; script-src 'self';">
+  <title>Chatty</title>
+  <link rel="stylesheet" href="styles/main.css">
+</head>
+<body>
+  <!-- Custom titlebar -->
+  <div id="titlebar">
+    <div id="titlebar-drag">
+      <svg id="titlebar-icon" width="18" height="18" viewBox="0 0 256 256">
+        <defs>
+          <linearGradient id="icon-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" style="stop-color:#3a3a42"/>
+            <stop offset="100%" style="stop-color:#2a2a30"/>
+          </linearGradient>
+        </defs>
+        <rect x="8" y="8" width="240" height="240" rx="48" ry="48" fill="url(#icon-bg)"/>
+        <text x="128" y="158" font-family="Consolas, 'Courier New', monospace" font-weight="bold" font-size="120" fill="white" text-anchor="middle" letter-spacing="-4">&gt;_</text>
+      </svg>
+      <span id="titlebar-title">Chatty - v1.5.0</span>
+    </div>
+    <div id="titlebar-account">
+      <img id="account-avatar" src="" alt="" style="display:none;">
+      <span id="account-name">Not logged in</span>
+      <button id="btn-account" title="Account">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+          <circle cx="12" cy="7" r="4"/>
+        </svg>
+      </button>
+      <button id="btn-whispers" title="Whispers" style="display:none;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        </svg>
+      </button>
+      <button id="btn-alerts" title="Activity Feed" style="display:none;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+        </svg>
+      </button>
+      <button id="btn-mod-actions" title="Mod Actions" style="display:none;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="6" y="2" width="12" height="8" rx="1"/>
+          <path d="M12 10V22"/>
+          <path d="M9 19H15"/>
+        </svg>
+      </button>
+      <button id="btn-streamer-tools" title="Streamer Tools" style="display:none;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+        </svg>
+      </button>
+      <button id="btn-settings" title="Settings">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+      </button>
+    </div>
+    <div id="titlebar-controls">
+      <button id="btn-minimize" title="Minimize">&#x2500;</button>
+      <button id="btn-maximize" title="Maximize">&#x25A1;</button>
+      <button id="btn-close" title="Close">&#x2715;</button>
+    </div>
+  </div>
+
+  <!-- Tab bar -->
+  <div id="tab-bar">
+    <button id="btn-add-tab" title="Add Tab">+</button>
+    <div id="tabs-container"></div>
+    <div id="split-actions">
+      <button id="act-info" title="Toggle stream info" disabled>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 12h4m-2-2v4m6-1h.01M18 11h.01"/><rect x="2" y="6" width="20" height="12" rx="2"/></svg>
+      </button>
+      <button id="act-users" title="User list" disabled>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      </button>
+      <button id="act-video" title="Video player" disabled>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+      </button>
+      <button id="act-search" title="Change channel" disabled>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      </button>
+      <button id="act-add" title="Add split">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </button>
+      <button id="act-close" title="Close split" disabled>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Main content area -->
+  <div id="main-content">
+    <div id="split-container"></div>
+  </div>
+
+  <!-- Whisper Panel -->
+  <div id="whisper-panel" class="hidden">
+    <div id="whisper-header">
+      <span id="whisper-title">Whispers</span>
+      <div id="whisper-unread" class="hidden">0</div>
+      <button id="whisper-close">&#x2715;</button>
+    </div>
+    <div id="whisper-messages"></div>
+    <div id="whisper-input-bar">
+      <input type="text" id="whisper-input" placeholder="No active conversation" disabled>
+      <button id="whisper-send" disabled>Send</button>
+    </div>
+  </div>
+
+  <!-- Account / Settings Modal -->
+  <div id="modal-overlay" class="hidden">
+    <div id="modal">
+      <div id="modal-header">
+        <h2 id="modal-title">Account</h2>
+        <button id="modal-close">&#x2715;</button>
+      </div>
+      <div id="modal-body"></div>
+    </div>
+  </div>
+
+  <!-- Stream search dialog -->
+  <div id="search-overlay" class="hidden">
+    <div id="search-dialog">
+      <div id="search-header">
+        <h3>Add Chat</h3>
+        <button id="search-close">&#x2715;</button>
+      </div>
+      <div id="search-tabs">
+        <button class="search-tab active" data-tab="browse">Browse Streams</button>
+        <button class="search-tab" data-tab="categories">Categories</button>
+        <button class="search-tab" data-tab="channel">Channel Name</button>
+      </div>
+      <div id="search-body">
+        <div id="search-browse" class="search-panel active">
+          <input type="text" id="search-input" placeholder="Search Twitch live streams...">
+          <div id="search-results"></div>
+        </div>
+        <div id="search-categories" class="search-panel">
+          <p class="search-hint">Browse top categories:</p>
+          <div id="categories-results"></div>
+        </div>
+        <div id="search-channel" class="search-panel">
+          <input type="text" id="channel-input" placeholder="Search for a channel...">
+          <div id="channel-search-results"></div>
+        </div>
+      </div>
+      <div id="search-target" style="display:none;" data-split-id=""></div>
+    </div>
+  </div>
+
+  <!-- Streamer Tools Modal -->
+  <div id="streamer-tools-overlay" class="hidden">
+    <div id="streamer-tools-dialog">
+      <div id="streamer-tools-header">
+        <h3>Streamer Tools</h3>
+        <button id="streamer-tools-close">&#x2715;</button>
+      </div>
+      <div id="streamer-tools-body"></div>
+    </div>
+  </div>
+
+  <script src="components/emote-badge-manager.js"></script>
+  <script src="components/tab-manager.js"></script>
+  <script src="components/split-manager.js"></script>
+  <script src="components/chat-view.js"></script>
+  <script src="components/modals.js"></script>
+  <script src="components/streamer-tools.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

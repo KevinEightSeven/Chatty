@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chatty Mobile — Login</title>
+  <style>
+    body {
+      background: #0a0a0c;
+      color: #e4e4e7;
+      font-family: -apple-system, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+      text-align: center;
+    }
+    .msg { font-size: 18px; }
+    .sub { color: #71717a; font-size: 14px; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <div>
+    <div class="msg" id="status">Completing login...</div>
+    <div class="sub" id="sub">Redirecting to Chatty Mobile</div>
+  </div>
+  <script>
+    var hash = window.location.hash.substring(1);
+    if (hash) {
+      // Redirect to the app's custom scheme with the token
+      window.location.replace('chattymobile://auth#' + hash);
+      // Fallback message if redirect doesn't work
+      setTimeout(function() {
+        document.getElementById('status').textContent = 'Login successful!';
+        document.getElementById('sub').textContent = 'You can close this tab and return to Chatty.';
+      }, 2000);
+    } else {
+      document.getElementById('status').textContent = 'Login failed';
+      document.getElementById('sub').textContent = 'No token received. Please try again.';
+    }
+  </script>
+</body>
+</html>

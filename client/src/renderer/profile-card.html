@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https://static-cdn.jtvnw.net https://cdn.betterttv.net https://cdn.frankerfacez.com https://cdn.7tv.app https://*.twitch.tv data:; style-src 'unsafe-inline'; script-src 'self';">
+  <title>Profile</title>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg-primary: #1a1a1e;
+      --bg-secondary: #222226;
+      --bg-tertiary: #2a2a2f;
+      --bg-hover: #35353b;
+      --text-primary: #e4e4e7;
+      --text-secondary: #a1a1aa;
+      --text-muted: #63637a;
+      --border: #333338;
+      --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    body {
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      font-size: 13px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+
+    #titlebar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 10px;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+      -webkit-app-region: drag;
+      flex-shrink: 0;
+      border-radius: 8px 8px 0 0;
+    }
+
+    #titlebar-text {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    #btn-close {
+      -webkit-app-region: no-drag;
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 16px;
+      cursor: pointer;
+      padding: 0 4px;
+      line-height: 1;
+    }
+
+    #btn-close:hover { color: #ef4444; }
+
+    #body {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex: 1;
+      color: var(--text-muted);
+      font-size: 12px;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px;
+    }
+
+    .avatar-wrap {
+      position: relative;
+      flex-shrink: 0;
+    }
+
+    .avatar {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+    }
+
+    .live-badge {
+      position: absolute;
+      bottom: -4px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #e91916;
+      color: #fff;
+      font-size: 9px;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 3px;
+      letter-spacing: 0.5px;
+      line-height: 1.3;
+    }
+
+    .names { min-width: 0; }
+
+    .displayname {
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      text-decoration: none;
+    }
+
+    .displayname:hover { text-decoration: underline; }
+
+    .username {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .user-id {
+      font-size: 10px;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: color 0.15s;
+      margin-top: 1px;
+    }
+
+    .user-id:hover {
+      color: var(--text-secondary);
+    }
+
+    .bio {
+      padding: 0 14px 10px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      line-height: 1.4;
+    }
+
+    .info {
+      padding: 8px 14px;
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .row {
+      display: flex;
+      justify-content: space-between;
+      padding: 3px 0;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .label {
+      color: var(--text-muted);
+      font-weight: 600;
+      margin-right: 8px;
+    }
+
+    .dim { color: var(--text-muted); font-style: italic; }
+
+    .sub-badge { color: #a78bfa; }
+
+    .stream {
+      display: flex;
+      gap: 10px;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      align-items: flex-start;
+    }
+
+    .boxart-link {
+      flex-shrink: 0;
+      cursor: pointer;
+      border-radius: 3px;
+      overflow: hidden;
+      transition: opacity 0.15s;
+    }
+
+    .boxart-link:hover { opacity: 0.8; }
+
+    .boxart {
+      display: block;
+      width: 40px;
+      height: 54px;
+      border-radius: 3px;
+    }
+
+    .stream-info { min-width: 0; flex: 1; }
+
+    .stream-link {
+      display: inline-block;
+      margin-top: 4px;
+      font-size: 11px;
+      color: #60a5fa;
+      cursor: pointer;
+      text-decoration: none;
+    }
+
+    .stream-link:hover {
+      text-decoration: underline;
+      color: #93bbfc;
+    }
+
+    .game {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .stream-title {
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-top: 2px;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .mod-buttons {
+      display: flex;
+      gap: 6px;
+      padding: 8px 14px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .mod-btn {
+      flex: 1;
+      padding: 5px 0;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--bg-secondary);
+      color: var(--text-secondary);
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+
+    .mod-btn:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+
+    .mod-ban { color: #ef4444; border-color: rgba(239, 68, 68, 0.3); }
+    .mod-ban:hover { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
+
+    .messages-header {
+      padding: 8px 14px 4px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+      flex-shrink: 0;
+      border-top: 1px solid var(--border);
+    }
+
+    .messages {
+      flex: 1;
+      min-height: 80px;
+      overflow-y: auto;
+      padding: 4px 14px 8px;
+    }
+
+    .msg {
+      padding: 3px 0;
+      font-size: 12px;
+      line-height: 1.5;
+      word-wrap: break-word;
+    }
+
+    .msg-time {
+      color: var(--text-muted);
+      font-size: 10px;
+      margin-right: 6px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .msg-text {
+      color: var(--text-primary);
+    }
+
+    .chat-emote {
+      height: 20px;
+      vertical-align: middle;
+      margin: -2px 1px;
+    }
+
+    .result-msg {
+      padding: 6px 14px;
+      font-size: 11px;
+      color: var(--text-muted);
+      font-style: italic;
+    }
+
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #404048; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #555; }
+  </style>
+</head>
+<body>
+  <div id="titlebar">
+    <span id="titlebar-text">Loading...</span>
+    <button id="btn-close" title="Close">&times;</button>
+  </div>
+  <div id="body">
+    <div id="loading">Loading...</div>
+  </div>
+  <script src="profile-card.js"></script>
+</body>
+</html>
