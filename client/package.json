@@ -2,6 +2,7 @@
   "name": "chatty",
   "version": "1.5.0",
   "description": "Twitch Chat Client — inspired by Chatterino",
+  "homepage": "https://github.com/KevinEightSeven/Chatty",
   "main": "src/main/main.js",
   "scripts": {
     "start": "electron . --ozone-platform-hint=auto",
