@@ -196,6 +196,115 @@ class ModalManager {
     });
   }
 
+  showAboutModal() {
+    const html = `
+      <div style="display:flex;align-items:center;justify-content:center;gap:14px;padding:12px 0 16px;">
+        <svg width="56" height="56" viewBox="0 0 256 256" style="flex-shrink:0;">
+          <defs>
+            <linearGradient id="about-icon-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" style="stop-color:#3a3a42"/>
+              <stop offset="100%" style="stop-color:#2a2a30"/>
+            </linearGradient>
+          </defs>
+          <rect x="8" y="8" width="240" height="240" rx="48" ry="48" fill="url(#about-icon-bg)"/>
+          <text x="128" y="158" font-family="Consolas, 'Courier New', monospace" font-weight="bold" font-size="120" fill="white" text-anchor="middle" letter-spacing="-4">&gt;_</text>
+        </svg>
+        <div>
+          <h2 style="font-size:22px;font-weight:700;color:var(--text-primary);margin:0;">Chatty</h2>
+          <div style="color:var(--text-muted);font-size:12px;margin-top:2px;">v1.6.0</div>
+        </div>
+      </div>
+
+      <div style="text-align:center;padding:0 16px 16px;color:var(--text-secondary);font-size:13px;line-height:1.6;">
+        A modern Twitch chat client for desktop — multi-pane chat, full emote support, streamer tools, and OBS overlays all in one lightweight app.
+      </div>
+
+      <div style="text-align:center;padding:0 0 20px;">
+        <div style="font-size:13px;color:var(--text-primary);font-weight:600;">Created by Kevin Walters (sempd)</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">Bravo Unit LLC</div>
+      </div>
+
+      <div style="text-align:center;padding-bottom:20px;">
+        <a id="about-donate" href="#" style="display:inline-block;background:#9146ff;color:#fff;font-weight:600;font-size:13px;padding:10px 28px;border-radius:8px;text-decoration:none;cursor:pointer;transition:opacity 0.15s;">
+          Support Chatty — Donate
+        </a>
+      </div>
+
+      <div style="border-top:1px solid var(--border);padding-top:16px;">
+        <h3 style="font-size:14px;font-weight:700;color:var(--text-primary);margin-bottom:12px;text-align:center;">Open Source Licenses</h3>
+
+        <div class="about-license-grid">
+          <div class="about-license-item">
+            <div class="about-license-name">Electron</div>
+            <div class="about-license-desc">Cross-platform desktop framework</div>
+            <div class="about-license-tag">MIT License</div>
+          </div>
+          <div class="about-license-item">
+            <div class="about-license-name">electron-builder</div>
+            <div class="about-license-desc">Build & distribute Electron apps</div>
+            <div class="about-license-tag">MIT License</div>
+          </div>
+          <div class="about-license-item">
+            <div class="about-license-name">electron-store</div>
+            <div class="about-license-desc">Persistent key-value storage</div>
+            <div class="about-license-tag">MIT License</div>
+          </div>
+          <div class="about-license-item">
+            <div class="about-license-name">ws</div>
+            <div class="about-license-desc">WebSocket client & server for Node.js</div>
+            <div class="about-license-tag">MIT License</div>
+          </div>
+
+          <div class="about-license-divider"></div>
+          <div class="about-license-section">Third-Party Services</div>
+
+          <div class="about-license-item">
+            <div class="about-license-name">Twitch Helix API</div>
+            <div class="about-license-desc">User data, channels, moderation, chat, EventSub</div>
+            <div class="about-license-tag">Twitch Developer TOS</div>
+          </div>
+          <div class="about-license-item">
+            <div class="about-license-name">Twitch IRC (WebSocket)</div>
+            <div class="about-license-desc">Real-time chat message transport</div>
+            <div class="about-license-tag">Twitch Developer TOS</div>
+          </div>
+          <div class="about-license-item">
+            <div class="about-license-name">BetterTTV API</div>
+            <div class="about-license-desc">BTTV global & channel emotes</div>
+            <div class="about-license-tag">Free API</div>
+          </div>
+          <div class="about-license-item">
+            <div class="about-license-name">FrankerFaceZ API</div>
+            <div class="about-license-desc">FFZ global & channel emotes</div>
+            <div class="about-license-tag">Free API</div>
+          </div>
+          <div class="about-license-item">
+            <div class="about-license-name">7TV API</div>
+            <div class="about-license-desc">7TV global & channel emotes</div>
+            <div class="about-license-tag">Free API</div>
+          </div>
+        </div>
+
+        <div style="text-align:center;margin-top:16px;padding-top:12px;border-top:1px solid var(--border);">
+          <div style="font-size:11px;color:var(--text-muted);">Chatty is open source under the MIT License</div>
+          <a id="about-github" href="#" style="font-size:11px;color:var(--accent-bright);text-decoration:none;cursor:pointer;">github.com/KevinEightSeven/Chatty</a>
+        </div>
+      </div>
+    `;
+
+    this.open('About', html);
+
+    document.getElementById('about-donate')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      window.chatty.openExternal('https://streamelements.com/sempd-86c3e/tip');
+    });
+
+    document.getElementById('about-github')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      window.chatty.openExternal('https://github.com/KevinEightSeven/Chatty');
+    });
+  }
+
   _escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;

@@ -38,6 +38,7 @@ class StreamerTools {
     const tabsHtml = `
       <button class="st-tab ${this._activeTab === 'alerts' ? 'active' : ''}" data-tab="alerts">Alerts</button>
       <button class="st-tab ${this._activeTab === 'chat' ? 'active' : ''}" data-tab="chat">Chat Overlay</button>
+      <button class="st-tab ${this._activeTab === 'triggers' ? 'active' : ''}" data-tab="triggers">Trigger Board</button>
       <button class="st-tab ${this._activeTab === 'preview' ? 'active' : ''}" data-tab="preview">Position Preview</button>
     `;
 
@@ -65,6 +66,7 @@ class StreamerTools {
       <div class="st-content">
         <div class="st-panel ${this._activeTab === 'alerts' ? 'active' : ''}" id="st-alerts-panel"></div>
         <div class="st-panel ${this._activeTab === 'chat' ? 'active' : ''}" id="st-chat-panel"></div>
+        <div class="st-panel ${this._activeTab === 'triggers' ? 'active' : ''}" id="st-triggers-panel"></div>
         <div class="st-panel ${this._activeTab === 'preview' ? 'active' : ''}" id="st-preview-panel"></div>
       </div>
     `;
@@ -82,6 +84,7 @@ class StreamerTools {
 
         if (this._activeTab === 'alerts') await this._renderAlerts();
         else if (this._activeTab === 'chat') await this._renderChat();
+        else if (this._activeTab === 'triggers') await this._renderTriggerBoard();
         else if (this._activeTab === 'preview') await this._renderPreview();
       });
     });
@@ -101,6 +104,7 @@ class StreamerTools {
     // Render active tab content
     if (this._activeTab === 'alerts') await this._renderAlerts();
     else if (this._activeTab === 'chat') await this._renderChat();
+    else if (this._activeTab === 'triggers') await this._renderTriggerBoard();
     else if (this._activeTab === 'preview') await this._renderPreview();
   }
 
@@ -780,7 +784,281 @@ class StreamerTools {
   // Default positions
   _defaultAlertPos() { return { x: 50, y: 20, width: 20, height: 15 }; }
   _defaultChatPos() { return { x: 2, y: 60, width: 25, height: 35 }; }
+  _defaultTriggerPos() { return { x: 75, y: 50, width: 20, height: 20 }; }
   _snapThreshold = 2; // percent distance to snap to guides
+
+  // ── Trigger Board Tab ──
+
+  async _renderTriggerBoard() {
+    const panel = document.getElementById('st-triggers-panel');
+    if (!panel) return;
+
+    const serverRunning = await window.chatty.overlayIsRunning();
+    const port = await window.chatty.getConfig('overlay.port') || 7878;
+    const triggerUrl = `http://127.0.0.1:${port}/triggers`;
+    const triggers = await window.chatty.getConfig('overlay.triggers') || [];
+
+    let triggersHtml = '';
+    if (triggers.length === 0) {
+      triggersHtml = `<div class="st-trigger-empty">No triggers yet. Add a trigger to get started.</div>`;
+    } else {
+      for (let i = 0; i < triggers.length; i++) {
+        const t = triggers[i];
+        const typeIcon = t.type === 'video' ? '&#x1F3AC;' : '&#x1F50A;';
+        const fileDisplay = t.file ? t.file.split('/').pop().split('\\\\').pop() : '<em>No file selected</em>';
+        const enabled = t.enabled !== false;
+        triggersHtml += `
+          <div class="st-trigger-item ${!enabled ? 'st-trigger-disabled' : ''}" data-idx="${i}">
+            <label class="st-toggle" style="margin-right:4px;">
+              <input type="checkbox" class="st-trigger-toggle" data-idx="${i}" ${enabled ? 'checked' : ''}>
+              <span class="st-toggle-slider"></span>
+            </label>
+            <div class="st-trigger-icon">${typeIcon}</div>
+            <div class="st-trigger-info">
+              <div class="st-trigger-name">${this._escapeHtml(t.name || 'Untitled')}</div>
+              <div class="st-trigger-meta">
+                <span class="st-trigger-type">${t.type === 'video' ? 'Video' : 'Sound'}</span>
+                <span class="st-trigger-file">${fileDisplay}</span>
+                ${t.rewardTitle ? `<span class="st-trigger-reward">&#x1F4A0; ${this._escapeHtml(t.rewardTitle)}${t.cost ? ` (${t.cost.toLocaleString()} pts)` : ''}</span>` : ''}
+              </div>
+            </div>
+            <div class="st-trigger-actions">
+              <button class="st-trigger-test" data-idx="${i}" title="Test">&#x25B6;</button>
+              <button class="st-trigger-edit" data-idx="${i}" title="Edit">&#x270E;</button>
+              <button class="st-trigger-delete" data-idx="${i}" title="Delete">&#x2715;</button>
+            </div>
+          </div>`;
+      }
+    }
+
+    let urlBarHtml = '';
+    if (serverRunning) {
+      urlBarHtml = `<div class="st-url-bar" style="margin-bottom:8px;">
+        <span>URL:</span>
+        <code>${triggerUrl}</code>
+        <button class="st-copy-btn" data-copy="${triggerUrl}" title="Copy URL">Copy</button>
+      </div>`;
+    }
+
+    panel.innerHTML = `
+      <div class="st-section">
+        <h3>Trigger Board</h3>
+        <p class="form-hint">Create custom sound and video triggers linked to channel point redemptions. Add this URL as a Browser Source in OBS to play triggers on stream. You can mute this source independently from alerts.</p>
+        ${urlBarHtml}
+      </div>
+      <div class="st-section" style="display:flex;gap:8px;align-items:center;">
+        <button id="st-add-trigger" class="btn-primary" style="width:auto;padding:8px 16px;">+ Add Trigger</button>
+      </div>
+      <div class="st-triggers-list">${triggersHtml}</div>
+      <div id="st-trigger-editor" style="display:none;"></div>
+    `;
+
+    // Copy buttons
+    panel.querySelectorAll('.st-copy-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        navigator.clipboard.writeText(btn.dataset.copy);
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+      });
+    });
+
+    // Add trigger
+    panel.querySelector('#st-add-trigger').addEventListener('click', () => {
+      this._showTriggerEditor(panel, triggers, -1);
+    });
+
+    // Enable/disable toggle
+    panel.querySelectorAll('.st-trigger-toggle').forEach(cb => {
+      cb.addEventListener('change', async () => {
+        const idx = parseInt(cb.dataset.idx);
+        triggers[idx].enabled = cb.checked;
+        await window.chatty.setConfig('overlay.triggers', triggers);
+        // Also enable/disable the reward on Twitch
+        if (triggers[idx].rewardId) {
+          const authStatus = await window.chatty.getAuthStatus();
+          if (authStatus.loggedIn && authStatus.user?.userId) {
+            await window.chatty.updateCustomReward(authStatus.user.userId, triggers[idx].rewardId, {
+              is_enabled: cb.checked,
+            });
+          }
+        }
+        cb.closest('.st-trigger-item').classList.toggle('st-trigger-disabled', !cb.checked);
+      });
+    });
+
+    // Edit / Delete / Test buttons
+    panel.querySelectorAll('.st-trigger-edit').forEach(btn => {
+      btn.addEventListener('click', () => {
+        this._showTriggerEditor(panel, triggers, parseInt(btn.dataset.idx));
+      });
+    });
+
+    panel.querySelectorAll('.st-trigger-delete').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const idx = parseInt(btn.dataset.idx);
+        const trigger = triggers[idx];
+
+        // Delete the channel point reward from Twitch if we created it
+        if (trigger?.rewardId) {
+          const authStatus = await window.chatty.getAuthStatus();
+          if (authStatus.loggedIn && authStatus.user?.userId) {
+            await window.chatty.deleteCustomReward(authStatus.user.userId, trigger.rewardId);
+          }
+        }
+
+        triggers.splice(idx, 1);
+        await window.chatty.setConfig('overlay.triggers', triggers);
+        await this._renderTriggerBoard();
+      });
+    });
+
+    panel.querySelectorAll('.st-trigger-test').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.idx);
+        const t = triggers[idx];
+        if (t) {
+          window.chatty.overlayTestTrigger(t);
+        }
+      });
+    });
+  }
+
+  _showTriggerEditor(panel, triggers, editIdx) {
+    const existing = editIdx >= 0 ? triggers[editIdx] : {};
+    const editor = panel.querySelector('#st-trigger-editor');
+    const list = panel.querySelector('.st-triggers-list');
+    list.style.display = 'none';
+    editor.style.display = 'block';
+
+    editor.innerHTML = `
+      <div class="st-section">
+        <h3>${editIdx >= 0 ? 'Edit Trigger' : 'New Trigger'}</h3>
+      </div>
+      <div class="st-section">
+        <div class="form-group">
+          <label>Trigger Name</label>
+          <input type="text" id="st-trig-name" value="${this._escapeHtml(existing.name || '')}" placeholder="e.g. Air Horn, Jumpscare..." style="font-family:var(--font-sans);">
+        </div>
+        <div class="form-group">
+          <label>Type</label>
+          <select id="st-trig-type" style="font-family:var(--font-sans);padding:8px;">
+            <option value="sound" ${existing.type !== 'video' ? 'selected' : ''}>Sound</option>
+            <option value="video" ${existing.type === 'video' ? 'selected' : ''}>Video</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Media File</label>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="text" id="st-trig-file" value="${this._escapeHtml(existing.file || '')}" placeholder="Select a file..." readonly style="flex:1;font-family:var(--font-sans);cursor:pointer;">
+            <button id="st-trig-browse" class="btn-primary" style="width:auto;padding:8px 14px;">Browse</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Volume <span id="st-trig-vol-label" style="color:var(--text-secondary);">(${Math.round((existing.volume ?? 0.8) * 100)}%)</span></label>
+          <input type="range" id="st-trig-volume" value="${existing.volume ?? 0.8}" min="0" max="1" step="0.05" style="width:200px;accent-color:var(--accent-bright);">
+        </div>
+        <div class="form-group">
+          <label>Channel Point Reward Title <span style="color:var(--text-muted);">(optional)</span></label>
+          <input type="text" id="st-trig-reward" value="${this._escapeHtml(existing.rewardTitle || '')}" placeholder="Exact reward title from Twitch..." style="font-family:var(--font-sans);">
+          <p class="form-hint">When a viewer redeems a channel point reward with this exact title, the trigger fires automatically.</p>
+        </div>
+        <div class="form-group">
+          <label>Channel Point Cost <span style="color:var(--text-muted);">(optional)</span></label>
+          <input type="number" id="st-trig-cost" value="${existing.cost || ''}" min="0" placeholder="e.g. 1000" style="width:120px;font-family:var(--font-sans);">
+          <p class="form-hint">For reference only — set the actual cost in your Twitch channel point rewards settings.</p>
+        </div>
+      </div>
+      <div class="st-section" style="display:flex;gap:8px;">
+        <button id="st-trig-save" class="btn-primary" style="width:auto;padding:8px 24px;">Save</button>
+        <button id="st-trig-cancel" style="width:auto;padding:8px 16px;background:var(--bg-tertiary);border:1px solid var(--border);color:var(--text-primary);border-radius:6px;cursor:pointer;">Cancel</button>
+      </div>
+    `;
+
+    // Volume slider label
+    editor.querySelector('#st-trig-volume').addEventListener('input', (e) => {
+      editor.querySelector('#st-trig-vol-label').textContent = `(${Math.round(e.target.value * 100)}%)`;
+    });
+
+    // Browse for file
+    editor.querySelector('#st-trig-browse').addEventListener('click', async () => {
+      const typeVal = editor.querySelector('#st-trig-type').value;
+      const result = await window.chatty.overlayUploadAsset(typeVal === 'video' ? 'video' : 'audio');
+      if (result && result.path) {
+        editor.querySelector('#st-trig-file').value = result.path;
+      }
+    });
+
+    // Cancel
+    editor.querySelector('#st-trig-cancel').addEventListener('click', () => {
+      editor.style.display = 'none';
+      list.style.display = '';
+    });
+
+    // Save
+    editor.querySelector('#st-trig-save').addEventListener('click', async () => {
+      const saveBtn = editor.querySelector('#st-trig-save');
+      saveBtn.textContent = 'Saving...';
+      saveBtn.disabled = true;
+
+      const name = editor.querySelector('#st-trig-name').value.trim() || 'Untitled';
+      const cost = parseInt(editor.querySelector('#st-trig-cost').value) || 100;
+      const rewardTitle = editor.querySelector('#st-trig-reward').value.trim();
+
+      const trigger = {
+        name,
+        type: editor.querySelector('#st-trig-type').value,
+        file: editor.querySelector('#st-trig-file').value,
+        volume: parseFloat(editor.querySelector('#st-trig-volume').value) || 0.8,
+        rewardTitle: rewardTitle || name,
+        cost,
+      };
+
+      // Preserve existing rewardId if editing
+      if (editIdx >= 0 && triggers[editIdx].rewardId) {
+        trigger.rewardId = triggers[editIdx].rewardId;
+      }
+
+      // Create or update the channel point reward on Twitch
+      const authStatus = await window.chatty.getAuthStatus();
+      if (authStatus.loggedIn && authStatus.user?.userId) {
+        const broadcasterId = authStatus.user.userId;
+
+        if (trigger.rewardId) {
+          // Update existing reward
+          const result = await window.chatty.updateCustomReward(broadcasterId, trigger.rewardId, {
+            title: trigger.rewardTitle,
+            cost: trigger.cost,
+            is_enabled: true,
+          });
+          if (result.error) {
+            // Reward may have been deleted on Twitch — create a new one
+            trigger.rewardId = null;
+          }
+        }
+
+        if (!trigger.rewardId) {
+          // Create new reward
+          const result = await window.chatty.createCustomReward(broadcasterId, trigger.rewardTitle, trigger.cost, {
+            should_redemptions_skip_request_queue: true,
+          });
+          if (result.id) {
+            trigger.rewardId = result.id;
+          } else if (result.error) {
+            console.warn('Failed to create channel point reward:', result.error);
+          }
+        }
+      }
+
+      if (editIdx >= 0) {
+        triggers[editIdx] = trigger;
+      } else {
+        triggers.push(trigger);
+      }
+
+      await window.chatty.setConfig('overlay.triggers', triggers);
+      await this._renderTriggerBoard();
+    });
+  }
 
   async _renderPreview() {
     const panel = document.getElementById('st-preview-panel');
@@ -788,15 +1066,20 @@ class StreamerTools {
 
     const alerts = await window.chatty.getConfig('overlay.alerts') || {};
     const chat = await window.chatty.getConfig('overlay.chat') || {};
+    const triggerCfg = await window.chatty.getConfig('overlay.triggerPosition') || {};
 
     const defAlert = this._defaultAlertPos();
     const defChat = this._defaultChatPos();
+    const defTrigger = this._defaultTriggerPos();
     const alertPos = alerts.position || defAlert;
     const chatPos = chat.position || defChat;
+    const triggerPos = triggerCfg.position || defTrigger;
 
     // Fill in width/height defaults if missing (backwards compat)
     if (!alertPos.width) alertPos.width = defAlert.width;
     if (!alertPos.height) alertPos.height = defAlert.height;
+    if (!triggerPos.width) triggerPos.width = defTrigger.width;
+    if (!triggerPos.height) triggerPos.height = defTrigger.height;
 
     const resolutions = [
       { label: '720p', w: 1280, h: 720 },
@@ -810,6 +1093,8 @@ class StreamerTools {
     const alertPxH = Math.round(r.h * alertPos.height / 100);
     const chatPxW = Math.round(r.w * chatPos.width / 100);
     const chatPxH = Math.round(r.h * chatPos.height / 100);
+    const trigPxW = Math.round(r.w * triggerPos.width / 100);
+    const trigPxH = Math.round(r.h * triggerPos.height / 100);
 
     let html = `
       <div class="st-section">
@@ -819,6 +1104,12 @@ class StreamerTools {
           ${resolutions.map(res => `<button class="st-res-btn ${res.label === this._previewResolution.label ? 'active' : ''}" data-w="${res.w}" data-h="${res.h}" data-label="${res.label}">${res.label} (${res.w}x${res.h})</button>`).join('')}
           <button id="st-reset-positions" class="st-res-btn" style="margin-left:auto;color:#ef4444;border-color:rgba(239,68,68,0.3);">Reset Positions</button>
         </div>
+      </div>
+      <div class="st-layer-bar">
+        <span style="font-size:11px;color:var(--text-muted);margin-right:6px;">Active Layer:</span>
+        <button class="st-layer-btn st-layer-alert active" data-layer="alert" style="color:#ef4444;border-color:rgba(239,68,68,0.4);">Alerts</button>
+        <button class="st-layer-btn st-layer-chat" data-layer="chat" style="color:#3b82f6;border-color:rgba(59,130,246,0.4);">Chat</button>
+        <button class="st-layer-btn st-layer-trigger" data-layer="trigger" style="color:#22c55e;border-color:rgba(34,197,94,0.4);">Triggers</button>
       </div>
       <div class="st-preview-wrapper">
         <div class="st-preview-canvas" id="st-preview-canvas">
@@ -834,6 +1125,13 @@ class StreamerTools {
           </div>
           <div class="st-preview-box st-preview-chat" id="st-drag-chat">
             <span class="st-box-label">CHAT</span>
+            <div class="st-resize-handle st-handle-tl" data-dir="tl"></div>
+            <div class="st-resize-handle st-handle-tr" data-dir="tr"></div>
+            <div class="st-resize-handle st-handle-bl" data-dir="bl"></div>
+            <div class="st-resize-handle st-handle-br" data-dir="br"></div>
+          </div>
+          <div class="st-preview-box st-preview-trigger" id="st-drag-trigger">
+            <span class="st-box-label">TRIGGERS</span>
             <div class="st-resize-handle st-handle-tl" data-dir="tl"></div>
             <div class="st-resize-handle st-handle-tr" data-dir="tr"></div>
             <div class="st-resize-handle st-handle-bl" data-dir="bl"></div>
@@ -884,11 +1182,61 @@ class StreamerTools {
         </div>
         <div class="st-dims-display" id="st-chat-dims">${chatPxW} x ${chatPxH} px</div>
 
+        <h4 style="margin-top:12px;margin-bottom:8px;">Trigger Dimensions</h4>
+        <div class="st-form-grid">
+          <div class="st-form-row">
+            <label>X (%)</label>
+            <input type="number" id="st-trigger-x" value="${triggerPos.x}" min="0" max="100" step="1">
+          </div>
+          <div class="st-form-row">
+            <label>Y (%)</label>
+            <input type="number" id="st-trigger-y" value="${triggerPos.y}" min="0" max="100" step="1">
+          </div>
+          <div class="st-form-row">
+            <label>Width (%)</label>
+            <input type="number" id="st-trigger-w" value="${triggerPos.width}" min="5" max="100" step="1">
+          </div>
+          <div class="st-form-row">
+            <label>Height (%)</label>
+            <input type="number" id="st-trigger-h" value="${triggerPos.height}" min="5" max="100" step="1">
+          </div>
+        </div>
+        <div class="st-dims-display" id="st-trigger-dims">${trigPxW} x ${trigPxH} px</div>
+
         <button id="st-save-positions" class="btn-primary" style="width:auto;padding:8px 24px;margin-top:12px;">Save Positions</button>
       </div>
     `;
 
     panel.innerHTML = html;
+
+    // Layer selector — brings selected box to front, sends others behind
+    const setActiveLayer = (layer) => {
+      const alertBox = panel.querySelector('#st-drag-alert');
+      const chatBox = panel.querySelector('#st-drag-chat');
+      const triggerBox = panel.querySelector('#st-drag-trigger');
+      const boxes = { alert: alertBox, chat: chatBox, trigger: triggerBox };
+
+      panel.querySelectorAll('.st-layer-btn').forEach(b => b.classList.remove('active'));
+      panel.querySelector(`.st-layer-btn[data-layer="${layer}"]`)?.classList.add('active');
+
+      for (const [key, box] of Object.entries(boxes)) {
+        if (!box) continue;
+        if (key === layer) {
+          box.style.zIndex = '20';
+          box.style.pointerEvents = 'auto';
+        } else {
+          box.style.zIndex = '5';
+          box.style.pointerEvents = 'none';
+        }
+      }
+    };
+
+    panel.querySelectorAll('.st-layer-btn').forEach(btn => {
+      btn.addEventListener('click', () => setActiveLayer(btn.dataset.layer));
+    });
+
+    // Set initial active layer
+    requestAnimationFrame(() => setActiveLayer('alert'));
 
     // Resolution buttons
     panel.querySelectorAll('.st-res-btn:not(#st-reset-positions)').forEach(btn => {
@@ -904,6 +1252,7 @@ class StreamerTools {
     document.getElementById('st-reset-positions')?.addEventListener('click', () => {
       const da = this._defaultAlertPos();
       const dc = this._defaultChatPos();
+      const dt = this._defaultTriggerPos();
       document.getElementById('st-alert-x').value = da.x;
       document.getElementById('st-alert-y').value = da.y;
       document.getElementById('st-alert-w').value = da.width;
@@ -912,6 +1261,10 @@ class StreamerTools {
       document.getElementById('st-chat-y').value = dc.y;
       document.getElementById('st-chat-w').value = dc.width;
       document.getElementById('st-chat-h').value = dc.height;
+      document.getElementById('st-trigger-x').value = dt.x;
+      document.getElementById('st-trigger-y').value = dt.y;
+      document.getElementById('st-trigger-w').value = dt.width;
+      document.getElementById('st-trigger-h').value = dt.height;
       this._updateBoxPositionsFromInputs(panel);
     });
 
@@ -931,6 +1284,10 @@ class StreamerTools {
       const cy = parseFloat(document.getElementById('st-chat-y').value) || 60;
       const cw = parseFloat(document.getElementById('st-chat-w').value) || 25;
       const ch = parseFloat(document.getElementById('st-chat-h').value) || 35;
+      const tx = parseFloat(document.getElementById('st-trigger-x').value) || 75;
+      const ty = parseFloat(document.getElementById('st-trigger-y').value) || 50;
+      const tw = parseFloat(document.getElementById('st-trigger-w').value) || 20;
+      const th = parseFloat(document.getElementById('st-trigger-h').value) || 20;
 
       const alerts = await window.chatty.getConfig('overlay.alerts') || {};
       const chat = await window.chatty.getConfig('overlay.chat') || {};
@@ -938,6 +1295,7 @@ class StreamerTools {
       chat.position = { x: cx, y: cy, width: cw, height: ch };
       await window.chatty.setConfig('overlay.alerts', alerts);
       await window.chatty.setConfig('overlay.chat', chat);
+      await window.chatty.setConfig('overlay.triggerPosition', { position: { x: tx, y: ty, width: tw, height: th } });
       await window.chatty.overlayReloadConfig();
 
       const btn = document.getElementById('st-save-positions');
@@ -946,7 +1304,7 @@ class StreamerTools {
     });
 
     // Coordinate inputs update preview
-    ['st-alert-x', 'st-alert-y', 'st-alert-w', 'st-alert-h', 'st-chat-x', 'st-chat-y', 'st-chat-w', 'st-chat-h'].forEach(id => {
+    ['st-alert-x', 'st-alert-y', 'st-alert-w', 'st-alert-h', 'st-chat-x', 'st-chat-y', 'st-chat-w', 'st-chat-h', 'st-trigger-x', 'st-trigger-y', 'st-trigger-w', 'st-trigger-h'].forEach(id => {
       document.getElementById(id)?.addEventListener('input', () => {
         this._updateBoxPositionsFromInputs(panel);
       });
@@ -975,6 +1333,7 @@ class StreamerTools {
     const canvas = panel.querySelector('#st-preview-canvas');
     const alertBox = panel.querySelector('#st-drag-alert');
     const chatBox = panel.querySelector('#st-drag-chat');
+    const triggerBox = panel.querySelector('#st-drag-trigger');
     if (!canvas || !alertBox || !chatBox) return;
 
     const ax = parseFloat(document.getElementById('st-alert-x')?.value) || 50;
@@ -985,6 +1344,10 @@ class StreamerTools {
     const cy = parseFloat(document.getElementById('st-chat-y')?.value) || 60;
     const cw = parseFloat(document.getElementById('st-chat-w')?.value) || 25;
     const ch = parseFloat(document.getElementById('st-chat-h')?.value) || 35;
+    const tx = parseFloat(document.getElementById('st-trigger-x')?.value) || 75;
+    const ty = parseFloat(document.getElementById('st-trigger-y')?.value) || 50;
+    const tw = parseFloat(document.getElementById('st-trigger-w')?.value) || 20;
+    const th = parseFloat(document.getElementById('st-trigger-h')?.value) || 20;
 
     // Alert: positioned by center point
     alertBox.style.left = ax + '%';
@@ -1000,12 +1363,23 @@ class StreamerTools {
     chatBox.style.height = ch + '%';
     chatBox.style.transform = 'none';
 
+    // Trigger: positioned by center point
+    if (triggerBox) {
+      triggerBox.style.left = tx + '%';
+      triggerBox.style.top = ty + '%';
+      triggerBox.style.transform = 'translate(-50%, -50%)';
+      triggerBox.style.width = tw + '%';
+      triggerBox.style.height = th + '%';
+    }
+
     // Update pixel dimensions display
     const r = this._previewResolution;
     const alertDims = document.getElementById('st-alert-dims');
     const chatDims = document.getElementById('st-chat-dims');
+    const triggerDims = document.getElementById('st-trigger-dims');
     if (alertDims) alertDims.textContent = `${Math.round(r.w * aw / 100)} x ${Math.round(r.h * ah / 100)} px`;
     if (chatDims) chatDims.textContent = `${Math.round(r.w * cw / 100)} x ${Math.round(r.h * ch / 100)} px`;
+    if (triggerDims) triggerDims.textContent = `${Math.round(r.w * tw / 100)} x ${Math.round(r.h * th / 100)} px`;
   }
 
   // Snap a value to 50% if within threshold
@@ -1017,57 +1391,71 @@ class StreamerTools {
     const canvas = panel.querySelector('#st-preview-canvas');
     const alertBox = panel.querySelector('#st-drag-alert');
     const chatBox = panel.querySelector('#st-drag-chat');
+    const triggerBox = panel.querySelector('#st-drag-trigger');
     if (!canvas || !alertBox || !chatBox) return;
 
+    // boxType: 'alert' (center), 'chat' (top-left), 'trigger' (center)
+    const isCentered = (type) => type === 'alert' || type === 'trigger';
+    const inputIds = (type) => ({
+      x: `st-${type}-x`, y: `st-${type}-y`, w: `st-${type}-w`, h: `st-${type}-h`
+    });
+
     // ── Move drag ──
-    const startDrag = (e, box, isAlert) => {
-      if (e.target.classList.contains('st-resize-handle')) return; // let resize handle it
+    // Bring clicked box to front via inline z-index
+    let topZ = 10;
+    const bringToFront = (box) => {
+      topZ++;
+      box.style.zIndex = topZ;
+    };
+
+    const startDrag = (e, box, boxType) => {
+      if (e.target.classList.contains('st-resize-handle')) return;
       e.preventDefault();
+      bringToFront(box);
       const canvasRect = canvas.getBoundingClientRect();
       const boxRect = box.getBoundingClientRect();
 
-      if (isAlert) {
+      if (isCentered(boxType)) {
         this._dragOffset.x = e.clientX - (boxRect.left + boxRect.width / 2);
         this._dragOffset.y = e.clientY - (boxRect.top + boxRect.height / 2);
       } else {
         this._dragOffset.x = e.clientX - boxRect.left;
         this._dragOffset.y = e.clientY - boxRect.top;
       }
-      this._dragTarget = { box, isAlert, canvasRect, mode: 'move' };
+      this._dragTarget = { box, boxType, canvasRect, mode: 'move' };
 
       const guideH = canvas.querySelector('.st-guide-h');
       const guideV = canvas.querySelector('.st-guide-v');
 
       const onMove = (ev) => {
         if (!this._dragTarget || this._dragTarget.mode !== 'move') return;
-        const { canvasRect, isAlert } = this._dragTarget;
+        const { canvasRect, boxType } = this._dragTarget;
+        const ids = inputIds(boxType);
 
-        if (isAlert) {
+        if (isCentered(boxType)) {
           let pctX = ((ev.clientX - this._dragOffset.x - canvasRect.left) / canvasRect.width) * 100;
           let pctY = ((ev.clientY - this._dragOffset.y - canvasRect.top) / canvasRect.height) * 100;
           pctX = Math.max(0, Math.min(100, pctX));
           pctY = Math.max(0, Math.min(100, pctY));
           pctX = this._snap(pctX);
           pctY = this._snap(pctY);
-          document.getElementById('st-alert-x').value = Math.round(pctX);
-          document.getElementById('st-alert-y').value = Math.round(pctY);
-          // Highlight guides on snap
+          document.getElementById(ids.x).value = Math.round(pctX);
+          document.getElementById(ids.y).value = Math.round(pctY);
           guideV?.classList.toggle('st-guide-snap', pctX === 50);
           guideH?.classList.toggle('st-guide-snap', pctY === 50);
         } else {
-          const boxW = parseFloat(document.getElementById('st-chat-w').value) || 25;
-          const boxH = parseFloat(document.getElementById('st-chat-h').value) || 35;
+          const boxW = parseFloat(document.getElementById(ids.w).value) || 25;
+          const boxH = parseFloat(document.getElementById(ids.h).value) || 35;
           let pctX = ((ev.clientX - this._dragOffset.x - canvasRect.left) / canvasRect.width) * 100;
           let pctY = ((ev.clientY - this._dragOffset.y - canvasRect.top) / canvasRect.height) * 100;
           pctX = Math.max(0, Math.min(100, pctX));
           pctY = Math.max(0, Math.min(100, pctY));
-          // Snap center of chat box to guides
           const centerX = pctX + boxW / 2;
           const centerY = pctY + boxH / 2;
           if (Math.abs(centerX - 50) < this._snapThreshold) pctX = 50 - boxW / 2;
           if (Math.abs(centerY - 50) < this._snapThreshold) pctY = 50 - boxH / 2;
-          document.getElementById('st-chat-x').value = Math.round(pctX);
-          document.getElementById('st-chat-y').value = Math.round(pctY);
+          document.getElementById(ids.x).value = Math.round(pctX);
+          document.getElementById(ids.y).value = Math.round(pctY);
           const finalCenterX = Math.round(pctX) + boxW / 2;
           const finalCenterY = Math.round(pctY) + boxH / 2;
           guideV?.classList.toggle('st-guide-snap', Math.abs(finalCenterX - 50) < this._snapThreshold);
@@ -1088,26 +1476,25 @@ class StreamerTools {
       document.addEventListener('mouseup', onUp);
     };
 
-    alertBox.addEventListener('mousedown', (e) => startDrag(e, alertBox, true));
-    chatBox.addEventListener('mousedown', (e) => startDrag(e, chatBox, false));
+    alertBox.addEventListener('mousedown', (e) => startDrag(e, alertBox, 'alert'));
+    chatBox.addEventListener('mousedown', (e) => startDrag(e, chatBox, 'chat'));
+    if (triggerBox) triggerBox.addEventListener('mousedown', (e) => startDrag(e, triggerBox, 'trigger'));
 
     // ── Resize handles ──
-    const startResize = (e, box, isAlert, dir) => {
+    const startResize = (e, box, boxType, dir) => {
       e.preventDefault();
       e.stopPropagation();
+      bringToFront(box);
       const canvasRect = canvas.getBoundingClientRect();
       const startX = e.clientX;
       const startY = e.clientY;
+      const centered = isCentered(boxType);
+      const ids = inputIds(boxType);
 
-      const xId = isAlert ? 'st-alert-x' : 'st-chat-x';
-      const yId = isAlert ? 'st-alert-y' : 'st-chat-y';
-      const wId = isAlert ? 'st-alert-w' : 'st-chat-w';
-      const hId = isAlert ? 'st-alert-h' : 'st-chat-h';
-
-      const origX = parseFloat(document.getElementById(xId).value);
-      const origY = parseFloat(document.getElementById(yId).value);
-      const origW = parseFloat(document.getElementById(wId).value);
-      const origH = parseFloat(document.getElementById(hId).value);
+      const origX = parseFloat(document.getElementById(ids.x).value);
+      const origY = parseFloat(document.getElementById(ids.y).value);
+      const origW = parseFloat(document.getElementById(ids.w).value);
+      const origH = parseFloat(document.getElementById(ids.h).value);
 
       const onMove = (ev) => {
         const dx = ((ev.clientX - startX) / canvasRect.width) * 100;
@@ -1115,46 +1502,22 @@ class StreamerTools {
 
         let newX = origX, newY = origY, newW = origW, newH = origH;
 
-        if (isAlert) {
-          // Alert uses center positioning, so resize from corners adjusts width/height symmetrically
-          if (dir === 'br') {
-            newW = Math.max(5, origW + dx * 2);
-            newH = Math.max(5, origH + dy * 2);
-          } else if (dir === 'bl') {
-            newW = Math.max(5, origW - dx * 2);
-            newH = Math.max(5, origH + dy * 2);
-          } else if (dir === 'tr') {
-            newW = Math.max(5, origW + dx * 2);
-            newH = Math.max(5, origH - dy * 2);
-          } else if (dir === 'tl') {
-            newW = Math.max(5, origW - dx * 2);
-            newH = Math.max(5, origH - dy * 2);
-          }
+        if (centered) {
+          if (dir === 'br') { newW = Math.max(5, origW + dx * 2); newH = Math.max(5, origH + dy * 2); }
+          else if (dir === 'bl') { newW = Math.max(5, origW - dx * 2); newH = Math.max(5, origH + dy * 2); }
+          else if (dir === 'tr') { newW = Math.max(5, origW + dx * 2); newH = Math.max(5, origH - dy * 2); }
+          else if (dir === 'tl') { newW = Math.max(5, origW - dx * 2); newH = Math.max(5, origH - dy * 2); }
         } else {
-          // Chat uses top-left positioning
-          if (dir === 'br') {
-            newW = Math.max(5, origW + dx);
-            newH = Math.max(5, origH + dy);
-          } else if (dir === 'bl') {
-            newX = origX + dx;
-            newW = Math.max(5, origW - dx);
-            newH = Math.max(5, origH + dy);
-          } else if (dir === 'tr') {
-            newY = origY + dy;
-            newW = Math.max(5, origW + dx);
-            newH = Math.max(5, origH - dy);
-          } else if (dir === 'tl') {
-            newX = origX + dx;
-            newY = origY + dy;
-            newW = Math.max(5, origW - dx);
-            newH = Math.max(5, origH - dy);
-          }
+          if (dir === 'br') { newW = Math.max(5, origW + dx); newH = Math.max(5, origH + dy); }
+          else if (dir === 'bl') { newX = origX + dx; newW = Math.max(5, origW - dx); newH = Math.max(5, origH + dy); }
+          else if (dir === 'tr') { newY = origY + dy; newW = Math.max(5, origW + dx); newH = Math.max(5, origH - dy); }
+          else if (dir === 'tl') { newX = origX + dx; newY = origY + dy; newW = Math.max(5, origW - dx); newH = Math.max(5, origH - dy); }
         }
 
-        document.getElementById(xId).value = Math.round(Math.max(0, Math.min(100, newX)));
-        document.getElementById(yId).value = Math.round(Math.max(0, Math.min(100, newY)));
-        document.getElementById(wId).value = Math.round(Math.min(100, newW));
-        document.getElementById(hId).value = Math.round(Math.min(100, newH));
+        document.getElementById(ids.x).value = Math.round(Math.max(0, Math.min(100, newX)));
+        document.getElementById(ids.y).value = Math.round(Math.max(0, Math.min(100, newY)));
+        document.getElementById(ids.w).value = Math.round(Math.min(100, newW));
+        document.getElementById(ids.h).value = Math.round(Math.min(100, newH));
         this._updateBoxPositionsFromInputs(panel);
       };
 
@@ -1167,11 +1530,12 @@ class StreamerTools {
       document.addEventListener('mouseup', onUp);
     };
 
-    // Attach resize handles for both boxes
-    [{ box: alertBox, isAlert: true }, { box: chatBox, isAlert: false }].forEach(({ box, isAlert }) => {
+    // Attach resize handles for all boxes
+    [{ box: alertBox, type: 'alert' }, { box: chatBox, type: 'chat' }, { box: triggerBox, type: 'trigger' }].forEach(({ box, type }) => {
+      if (!box) return;
       box.querySelectorAll('.st-resize-handle').forEach(handle => {
         handle.addEventListener('mousedown', (e) => {
-          startResize(e, box, isAlert, handle.dataset.dir);
+          startResize(e, box, type, handle.dataset.dir);
         });
       });
     });

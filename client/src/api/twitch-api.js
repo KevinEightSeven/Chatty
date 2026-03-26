@@ -623,6 +623,71 @@ class TwitchAPI {
       return { error: err.message };
     }
   }
+  // ── Channel Point Rewards ──
+
+  async createCustomReward(broadcasterId, title, cost, opts = {}) {
+    try {
+      const body = {
+        title,
+        cost,
+        is_enabled: true,
+        ...opts,
+      };
+      const data = await this._post('/channel_points/custom_rewards', { broadcaster_id: broadcasterId }, body);
+      return data.data?.[0] || { error: 'No data returned' };
+    } catch (err) {
+      return { error: err.message };
+    }
+  }
+
+  async updateCustomReward(broadcasterId, rewardId, updates) {
+    try {
+      const url = new URL(`${BASE}/channel_points/custom_rewards`);
+      url.searchParams.set('broadcaster_id', broadcasterId);
+      url.searchParams.set('id', rewardId);
+      const res = await fetch(url.toString(), {
+        method: 'PATCH',
+        headers: { ...this._headers(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`${res.status}: ${text}`);
+      }
+      const data = await res.json();
+      return data.data?.[0] || {};
+    } catch (err) {
+      return { error: err.message };
+    }
+  }
+
+  async deleteCustomReward(broadcasterId, rewardId) {
+    try {
+      const url = new URL(`${BASE}/channel_points/custom_rewards`);
+      url.searchParams.set('broadcaster_id', broadcasterId);
+      url.searchParams.set('id', rewardId);
+      const res = await fetch(url.toString(), {
+        method: 'DELETE',
+        headers: this._headers(),
+      });
+      if (!res.ok && res.status !== 204) {
+        const text = await res.text();
+        throw new Error(`${res.status}: ${text}`);
+      }
+      return { success: true };
+    } catch (err) {
+      return { error: err.message };
+    }
+  }
+
+  async getCustomRewards(broadcasterId) {
+    try {
+      const data = await this._get('/channel_points/custom_rewards', { broadcaster_id: broadcasterId });
+      return { items: data.data || [] };
+    } catch (err) {
+      return { error: err.message, items: [] };
+    }
+  }
 }
 
 module.exports = { TwitchAPI };

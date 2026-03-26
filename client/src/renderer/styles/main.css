@@ -2755,7 +2755,6 @@ img.chat-badge {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 1px;
-  z-index: 5;
 }
 
 .st-preview-box:active {
@@ -2772,6 +2771,37 @@ img.chat-badge {
   border-color: rgba(59, 130, 246, 0.6);
   background: rgba(59, 130, 246, 0.1);
   color: rgba(59, 130, 246, 0.8);
+}
+
+.st-preview-trigger {
+  border-color: rgba(34, 197, 94, 0.6);
+  background: rgba(34, 197, 94, 0.1);
+  color: rgba(34, 197, 94, 0.8);
+}
+
+.st-layer-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.st-layer-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+  opacity: 0.5;
+}
+.st-layer-btn:hover {
+  opacity: 0.8;
+}
+.st-layer-btn.active {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.05);
 }
 
 /* Guide lines — centered crosshair */
@@ -3005,5 +3035,147 @@ img.chat-badge {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+/* ── Trigger Board ── */
+.st-triggers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.st-trigger-empty {
+  text-align: center;
+  padding: 32px 16px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.st-trigger-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+.st-trigger-item:hover {
+  background: var(--bg-hover);
+}
+.st-trigger-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+  width: 24px;
+  text-align: center;
+}
+.st-trigger-info {
+  flex: 1;
+  min-width: 0;
+}
+.st-trigger-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.st-trigger-meta {
+  display: flex;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.st-trigger-type {
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+.st-trigger-file {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.st-trigger-reward {
+  color: #9146ff;
+  font-weight: 600;
+}
+.st-trigger-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.st-trigger-actions button {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px 8px;
+  font-size: 12px;
+  transition: background 0.15s, color 0.15s;
+}
+.st-trigger-actions button:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.st-trigger-delete:hover {
+  border-color: #ef4444 !important;
+  color: #ef4444 !important;
+}
+.st-trigger-disabled {
+  opacity: 0.45;
+}
+.st-trigger-disabled .st-trigger-name {
+  text-decoration: line-through;
+}
+
+/* ── About Modal ── */
+.about-license-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.about-license-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+.about-license-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  min-width: 130px;
+  flex-shrink: 0;
+}
+.about-license-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex: 1;
+}
+.about-license-tag {
+  font-size: 10px;
+  font-weight: 600;
+  color: #22c55e;
+  background: rgba(34, 197, 94, 0.1);
+  padding: 2px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.about-license-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 8px 0;
+}
+.about-license-section {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 0 4px 4px;
 }
 

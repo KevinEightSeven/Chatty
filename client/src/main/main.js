@@ -442,6 +442,28 @@ ipcMain.handle('twitch:end-poll', async (_event, broadcasterId, pollId, status) 
   return twitchAPI.endPoll(broadcasterId, pollId, status);
 });
 
+// ── Channel Point Rewards ──
+
+ipcMain.handle('twitch:create-custom-reward', async (_event, broadcasterId, title, cost, opts) => {
+  if (!twitchAPI) return { error: 'Not authenticated' };
+  return twitchAPI.createCustomReward(broadcasterId, title, cost, opts);
+});
+
+ipcMain.handle('twitch:update-custom-reward', async (_event, broadcasterId, rewardId, updates) => {
+  if (!twitchAPI) return { error: 'Not authenticated' };
+  return twitchAPI.updateCustomReward(broadcasterId, rewardId, updates);
+});
+
+ipcMain.handle('twitch:delete-custom-reward', async (_event, broadcasterId, rewardId) => {
+  if (!twitchAPI) return { error: 'Not authenticated' };
+  return twitchAPI.deleteCustomReward(broadcasterId, rewardId);
+});
+
+ipcMain.handle('twitch:get-custom-rewards', async (_event, broadcasterId) => {
+  if (!twitchAPI) return { error: 'Not authenticated', items: [] };
+  return twitchAPI.getCustomRewards(broadcasterId);
+});
+
 // ── EventSub (Alerts) ──
 
 ipcMain.handle('eventsub:start', async () => {
@@ -466,10 +488,16 @@ ipcMain.handle('eventsub:start', async () => {
           { type: 'channel.subscription.message', version: '1', condition: { broadcaster_user_id: userId } },
           { type: 'channel.cheer', version: '1', condition: { broadcaster_user_id: userId } },
           { type: 'channel.raid', version: '1', condition: { to_broadcaster_user_id: userId } },
+          { type: 'channel.channel_points_custom_reward_redemption.add', version: '1', condition: { broadcaster_user_id: userId } },
         ];
 
         for (const sub of subs) {
-          await twitchAPI.createEventSubSubscription(sub.type, sub.version, sub.condition, sessionId);
+          const result = await twitchAPI.createEventSubSubscription(sub.type, sub.version, sub.condition, sessionId);
+          if (result?.error) {
+            console.warn(`[EventSub] Failed to subscribe to ${sub.type}: ${result.error}`);
+          } else {
+            console.log(`[EventSub] Subscribed to ${sub.type}`);
+          }
         }
 
         resolve({ success: true });
@@ -512,8 +540,10 @@ ipcMain.handle('eventsub:start', async () => {
           fs.appendFile(logFile, entry, () => {});
         }
 
-        // Forward to overlay server for OBS alerts
-        if (overlayServer?.isRunning() && evt.event) {
+        // Forward to overlay server for OBS alerts (only known alert types, not channel point events)
+        const alertTypes = ['channel.follow', 'channel.subscribe', 'channel.subscription.gift',
+          'channel.subscription.message', 'channel.cheer', 'channel.raid'];
+        if (overlayServer?.isRunning() && evt.event && alertTypes.includes(evt.type)) {
           const e = evt.event;
           const alertData = { eventType: evt.type };
           if (evt.type === 'channel.follow') {
@@ -546,6 +576,24 @@ ipcMain.handle('eventsub:start', async () => {
             alertData.viewers = e.viewers || 0;
           }
           overlayServer.pushAlert(alertData);
+        }
+
+        // Channel point redemptions → fire matching triggers
+        if (evt.type === 'channel.channel_points_custom_reward_redemption.add' && evt.event) {
+          const rewardTitle = evt.event.reward?.title || '';
+          console.log(`[Trigger] Channel point redeemed: "${rewardTitle}"`);
+          if (rewardTitle && overlayServer?.isRunning()) {
+            const triggers = store.get('overlay.triggers', []);
+            let matched = false;
+            for (const trigger of triggers) {
+              if (trigger.enabled !== false && trigger.rewardTitle && trigger.rewardTitle.toLowerCase() === rewardTitle.toLowerCase()) {
+                console.log(`[Trigger] Matched trigger: "${trigger.name}" → pushing to overlay`);
+                overlayServer.pushTrigger(trigger);
+                matched = true;
+              }
+            }
+            if (!matched) console.log(`[Trigger] No matching trigger found for "${rewardTitle}"`);
+          }
         }
       }
     };
@@ -877,11 +925,29 @@ ipcMain.handle('overlay:reload-config', async () => {
   }
 });
 
+ipcMain.handle('overlay:test-trigger', async (_event, trigger) => {
+  if (overlayServer?.isRunning()) {
+    overlayServer.pushTrigger(trigger);
+    return { success: true };
+  }
+  return { error: 'Overlay server not running' };
+});
+
 ipcMain.handle('overlay:upload-asset', async (_event, filterType) => {
   const { dialog } = require('electron');
-  const filters = filterType === 'sound'
-    ? [{ name: 'Audio', extensions: ['mp3', 'ogg', 'wav'] }]
-    : [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'] }];
+  let filters;
+  if (filterType === 'audio') {
+    filters = [{ name: 'Audio', extensions: ['mp3', 'ogg', 'wav', 'flac', 'aac', 'm4a'] }];
+  } else if (filterType === 'video') {
+    filters = [{ name: 'Video', extensions: ['mp4', 'webm', 'mov', 'avi', 'mkv'] }];
+  } else if (filterType === 'media') {
+    filters = [{ name: 'Media', extensions: ['mp3', 'ogg', 'wav', 'flac', 'mp4', 'webm', 'mov'] }];
+  } else {
+    filters = [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'] }];
+  }
+  // Also allow "All Files" as fallback
+  filters.push({ name: 'All Files', extensions: ['*'] });
+
   const result = await dialog.showOpenDialog(mainWindow, {
     properties: ['openFile'],
     filters,
@@ -897,7 +963,7 @@ ipcMain.handle('overlay:upload-asset', async (_event, filterType) => {
     overlayServer = new OverlayServer(store, userDataDir || app.getPath('userData'));
   }
   const savedName = overlayServer.saveAsset(filename, buffer);
-  return { filename: savedName };
+  return { filename: savedName, path: `/assets/${savedName}` };
 });
 
 // Settings

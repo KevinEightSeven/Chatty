@@ -148,6 +148,17 @@ contextBridge.exposeInMainWorld('chatty', {
   overlayTestAlert: (type, overrides) => ipcRenderer.invoke('overlay:test-alert', type, overrides),
   overlayUploadAsset: (filterType) => ipcRenderer.invoke('overlay:upload-asset', filterType),
   overlayReloadConfig: () => ipcRenderer.invoke('overlay:reload-config'),
+  overlayTestTrigger: (trigger) => ipcRenderer.invoke('overlay:test-trigger', trigger),
+
+  // Channel Point Rewards
+  createCustomReward: (broadcasterId, title, cost, opts) =>
+    ipcRenderer.invoke('twitch:create-custom-reward', broadcasterId, title, cost, opts),
+  updateCustomReward: (broadcasterId, rewardId, updates) =>
+    ipcRenderer.invoke('twitch:update-custom-reward', broadcasterId, rewardId, updates),
+  deleteCustomReward: (broadcasterId, rewardId) =>
+    ipcRenderer.invoke('twitch:delete-custom-reward', broadcasterId, rewardId),
+  getCustomRewards: (broadcasterId) =>
+    ipcRenderer.invoke('twitch:get-custom-rewards', broadcasterId),
 
   // External links
   openExternal: (url) => ipcRenderer.send('open-external', url),

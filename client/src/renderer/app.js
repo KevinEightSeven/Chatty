@@ -256,6 +256,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     streamerTools.open();
   });
 
+  document.getElementById('btn-about')?.addEventListener('click', () => {
+    try {
+      modalManager.showAboutModal();
+    } catch (err) {
+      console.error('About modal error:', err);
+    }
+  });
+
   document.getElementById('btn-settings').addEventListener('click', () => {
     modalManager.showSettingsModal();
   });

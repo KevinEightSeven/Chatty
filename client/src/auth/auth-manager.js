@@ -11,7 +11,7 @@ const REDIRECT_PORT = 48721;
 const REDIRECT_URI = `http://localhost:${REDIRECT_PORT}/callback`;
 
 // Bundled Client ID — no secret needed with implicit grant
-const CLIENT_ID = 'wk9u3h3netoqji2tzmcm0i2zbz5e77';
+const CLIENT_ID = 'c5l8cxn61886s9k4e5ys5zz5soqzax';
 
 const SCOPES = [
   'chat:read',
@@ -38,6 +38,8 @@ const SCOPES = [
   'channel:manage:raids',
   'channel:manage:polls',
   'channel:edit:commercial',
+  'channel:manage:redemptions',
+  'channel:read:redemptions',
   'bits:read',
 ].join(' ');
 

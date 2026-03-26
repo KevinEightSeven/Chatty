@@ -93,6 +93,11 @@ class OverlayServer {
     this._broadcast({ type: 'config-reload' });
   }
 
+  // Push a trigger (sound/video) to all connected overlay clients
+  pushTrigger(trigger) {
+    this._broadcast({ type: 'trigger', data: trigger });
+  }
+
   // Push a test alert for preview — supports variant overrides
   pushTestAlert(alertType, overrides) {
     const testData = {
@@ -131,6 +136,8 @@ class OverlayServer {
 
     if (pathname === '/' || pathname === '/alerts') {
       this._serveFile(res, path.join(__dirname, '..', 'overlay', 'alerts.html'), 'text/html');
+    } else if (pathname === '/triggers') {
+      this._serveFile(res, path.join(__dirname, '..', 'overlay', 'triggers.html'), 'text/html');
     } else if (pathname === '/chat') {
       this._serveFile(res, path.join(__dirname, '..', 'overlay', 'chat.html'), 'text/html');
     } else if (pathname === '/config/alerts') {
@@ -146,6 +153,7 @@ class OverlayServer {
           '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
           '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml',
           '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.ogg': 'audio/ogg',
+          '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime',
         };
         this._serveFile(res, filePath, mimeTypes[ext] || 'application/octet-stream');
       } else {

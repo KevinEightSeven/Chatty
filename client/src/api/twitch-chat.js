@@ -12,6 +12,8 @@ class TwitchChat {
     this._pongTimeout = null;
     this._reconnectTimeout = null;
     this._reconnectDelay = 1000;
+    this._lastMessageTime = 0;
+    this._activityCheckInterval = null;
     this.connected = false;
     this.onStateChange = null; // callback(connected)
     this.onWhisper = null; // callback(parsed) — global whisper handler
@@ -36,6 +38,7 @@ class TwitchChat {
     });
 
     this.ws.on('message', (raw) => {
+      this._lastMessageTime = Date.now();
       const lines = raw.toString().split('\r\n').filter(Boolean);
       for (const line of lines) {
         this._handleLine(line);
@@ -45,6 +48,7 @@ class TwitchChat {
     this.ws.on('close', () => {
       this.connected = false;
       if (this.onStateChange) this.onStateChange(false);
+      this._stopKeepAlive();
       this._scheduleReconnect();
     });
 
@@ -54,8 +58,7 @@ class TwitchChat {
   }
 
   disconnect() {
-    if (this._pingInterval) clearInterval(this._pingInterval);
-    if (this._pongTimeout) clearTimeout(this._pongTimeout);
+    this._stopKeepAlive();
     if (this._reconnectTimeout) clearTimeout(this._reconnectTimeout);
     this.channels.clear();
     if (this.ws) {
@@ -107,18 +110,17 @@ class TwitchChat {
   }
 
   _handleLine(line) {
-    // PING
+    // PING from Twitch
     if (line === 'PING :tmi.twitch.tv') {
       this.ws.send('PONG :tmi.twitch.tv');
       return;
     }
 
     // Connected confirmation
-    if (line.includes('376') || line.includes(':Welcome, GLHF!')) {
+    if (line.includes(' 376 ') || line.includes(':Welcome, GLHF!')) {
       this.connected = true;
       if (this.onStateChange) this.onStateChange(true);
-      // Start client-side PING keepalive (detect silent disconnects)
-      this._startPingKeepAlive();
+      this._startKeepAlive();
       // Rejoin all channels
       for (const ch of this.channels.keys()) {
         this.ws.send(`JOIN #${ch}`);
@@ -126,8 +128,9 @@ class TwitchChat {
       return;
     }
 
-    // PONG response — clear the pong timeout
-    if (line.includes('PONG')) {
+    // PONG response to our PING — clear the pong timeout
+    // Match specifically ":tmi.twitch.tv PONG" to avoid matching chat messages containing "PONG"
+    if (line.includes(':tmi.twitch.tv PONG') || line.includes(':keepalive')) {
       if (this._pongTimeout) {
         clearTimeout(this._pongTimeout);
         this._pongTimeout = null;
@@ -137,6 +140,16 @@ class TwitchChat {
 
     // RECONNECT
     if (line.includes('RECONNECT')) {
+      this.ws.close();
+      return;
+    }
+
+    // Login failure — token expired or invalid
+    if (line.includes('Login authentication failed') || line.includes('Login unsuccessful')) {
+      console.warn('[TwitchChat] Auth failed — token may have expired');
+      this.connected = false;
+      if (this.onStateChange) this.onStateChange(false);
+      // Force reconnect which will use the current token
       this.ws.close();
       return;
     }
@@ -226,10 +239,11 @@ class TwitchChat {
     return tags;
   }
 
-  _startPingKeepAlive() {
-    if (this._pingInterval) clearInterval(this._pingInterval);
-    if (this._pongTimeout) clearTimeout(this._pongTimeout);
-    // Send PING every 60s; if no PONG within 10s, force reconnect
+  _startKeepAlive() {
+    this._stopKeepAlive();
+    this._lastMessageTime = Date.now();
+
+    // Send PING every 30s (was 60s — faster detection of dead connections)
     this._pingInterval = setInterval(() => {
       if (this.ws?.readyState === WebSocket.OPEN) {
         this.ws.send('PING :keepalive');
@@ -238,12 +252,35 @@ class TwitchChat {
           if (this.ws) this.ws.close();
         }, 10000);
       }
-    }, 60000);
+    }, 30000);
+
+    // Check for activity — if no data received in 90s, connection is probably dead
+    this._activityCheckInterval = setInterval(() => {
+      const elapsed = Date.now() - this._lastMessageTime;
+      if (elapsed > 90000 && this.connected) {
+        console.warn(`[TwitchChat] No data for ${Math.round(elapsed / 1000)}s — forcing reconnect`);
+        if (this.ws) this.ws.close();
+      }
+    }, 30000);
+  }
+
+  _stopKeepAlive() {
+    if (this._pingInterval) {
+      clearInterval(this._pingInterval);
+      this._pingInterval = null;
+    }
+    if (this._pongTimeout) {
+      clearTimeout(this._pongTimeout);
+      this._pongTimeout = null;
+    }
+    if (this._activityCheckInterval) {
+      clearInterval(this._activityCheckInterval);
+      this._activityCheckInterval = null;
+    }
   }
 
   _scheduleReconnect() {
-    if (this._pingInterval) clearInterval(this._pingInterval);
-    if (this._pongTimeout) clearTimeout(this._pongTimeout);
+    this._stopKeepAlive();
     if (this._reconnectTimeout) clearTimeout(this._reconnectTimeout);
     this._reconnectTimeout = setTimeout(() => {
       if (this.nick && this.token) {

@@ -236,6 +236,26 @@ MIT License — see [LICENSE](LICENSE) for details.
      for what changed and when, especially across session boundaries.
 -->
 
+## v1.6.0 (2026-03-25)
+
+### New Features
+- **Trigger Board**: New Streamer Tools tab for creating custom sound and video triggers linked to Twitch channel point redemptions
+  - Triggers auto-create channel point rewards on your Twitch channel when saved
+  - Dedicated `/triggers` OBS Browser Source URL — can be muted independently from alerts
+  - Enable/disable toggle per trigger (also enables/disables the Twitch reward)
+  - Support for MP3, OGG, WAV, FLAC, MP4, WEBM, MOV media files
+  - Configurable volume, channel point cost, and reward title
+  - Deleting a trigger removes the channel point reward from Twitch
+- **Trigger Position Preview**: Green TRIGGERS box in the Position Preview canvas, draggable and resizable alongside Alerts and Chat
+- **Active Layer selector**: Layer buttons (Alerts / Chat / Triggers) in Position Preview to select which box is on top for dragging when boxes overlap
+- **About screen**: New (i) icon in the titlebar with app info, creator credits (Kevin Walters / Bravo Unit LLC), donation link, and open source license listing for all dependencies and third-party services
+
+### Improvements
+- **Chat reliability**: PING keepalive reduced from 60s to 30s, activity monitor forces reconnect after 90s of no data, stricter PONG matching, auth failure detection
+- **Alert isolation**: Channel point redemption events no longer trigger false follow/sub alerts on the OBS overlay — only known alert types are forwarded to `/alerts`
+- **File upload**: Browse dialog now accepts audio (MP3, OGG, WAV, FLAC, AAC) and video (MP4, WEBM, MOV, AVI, MKV) files with an "All Files" fallback
+- **OAuth scopes**: Added `channel:manage:redemptions` and `channel:read:redemptions` for channel point reward management
+
 ## v1.5.0 (2026-03-24)
 
 ### New Features

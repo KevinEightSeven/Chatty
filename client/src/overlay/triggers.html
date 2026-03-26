@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Chatty Triggers Overlay</title>
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    overflow: hidden;
+  }
+
+  #trigger-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  video, audio {
+    pointer-events: none;
+  }
+
+  video {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background: transparent;
+  }
+</style>
+</head>
+<body>
+<div id="trigger-container"></div>
+
+<script>
+  let ws;
+
+  function playTrigger(trigger) {
+    if (!trigger || !trigger.file) return;
+    const container = document.getElementById('trigger-container');
+    const vol = trigger.volume ?? 0.8;
+
+    if (trigger.type === 'video') {
+      const video = document.createElement('video');
+      video.src = trigger.file;
+      video.volume = vol;
+      video.autoplay = true;
+      video.style.cssText = 'width:100%;height:100%;object-fit:contain;background:transparent;';
+      container.appendChild(video);
+      video.addEventListener('ended', () => video.remove());
+      video.addEventListener('error', () => video.remove());
+      setTimeout(() => { if (video.parentNode) video.remove(); }, 60000);
+    } else {
+      const audio = new Audio(trigger.file);
+      audio.volume = vol;
+      audio.play().catch(() => {});
+    }
+  }
+
+  function connectWS() {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    ws = new WebSocket(proto + '//' + location.host + location.pathname);
+
+    ws.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'trigger') {
+          playTrigger(msg.data);
+        }
+      } catch {}
+    };
+
+    ws.onclose = () => {
+      setTimeout(connectWS, 3000);
+    };
+
+    ws.onerror = () => {};
+  }
+
+  connectWS();
+</script>
+</body>
+</html>
