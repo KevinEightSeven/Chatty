@@ -1,6 +1,6 @@
 {
   "name": "chatty",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "description": "Twitch Chat Client — inspired by Chatterino",
   "homepage": "https://github.com/KevinEightSeven/Chatty",
   "main": "src/main/main.js",
